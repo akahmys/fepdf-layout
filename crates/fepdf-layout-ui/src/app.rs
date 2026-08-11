@@ -416,10 +416,13 @@ impl eframe::App for FepdfLayoutApp {
 
         // --- 5. Center Workspace: 1mm Grid Canvas ---
         egui::CentralPanel::default().show(ctx, |ui| {
-            let page_spec = self.mgr.doc.page_spec;
-            let scale = 2.0_f32 * self.zoom; // 1mm = 2.0 * zoom pixels
-            let page_w_px = (page_spec.layout_width.0 as f32) * scale;
-            let page_h_px = (page_spec.layout_height.0 as f32) * scale;
+            egui::ScrollArea::both()
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    let page_spec = self.mgr.doc.page_spec;
+                    let scale = 2.0_f32 * self.zoom; // 1mm = 2.0 * zoom pixels
+                    let page_w_px = (page_spec.layout_width.0 as f32) * scale;
+                    let page_h_px = (page_spec.layout_height.0 as f32) * scale;
 
             let (response, painter) = ui.allocate_painter(
                 egui::vec2(page_w_px + 40.0, page_h_px + 40.0),
@@ -825,6 +828,7 @@ impl eframe::App for FepdfLayoutApp {
                 }
             }
         });
+    });
     }
 }
 
