@@ -643,10 +643,13 @@ impl eframe::App for FepdfLayoutApp {
                 ToolState::Select => {}
             }
 
-            // 5. Mouse Press & Drag Handling with Live Hover Coordinates
+            // 5. Mouse Press & Drag Handling with Always-On Live Hover Coordinates
             if let Some(pointer_pos) = ctx.pointer_interact_pos() {
                 if page_rect.contains(pointer_pos) {
                     let (mouse_x, mouse_y) = screen_to_mm(pointer_pos);
+
+                    // Always-on live coordinate hover badge near cursor inside page area
+                    draw_coord_badge(&painter, pointer_pos, &format!("({}, {}) mm", mouse_x, mouse_y));
 
                     // MOUSE PRESS DOWN EVENT
                     if ctx.input(|i| i.pointer.primary_pressed()) {
