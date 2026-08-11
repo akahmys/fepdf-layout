@@ -620,7 +620,7 @@ impl eframe::App for FepdfLayoutApp {
                     if let Some(pointer_pos) = ctx.pointer_interact_pos() {
                         if page_rect.contains(pointer_pos) {
                             let (curr_x, curr_y) = screen_to_mm(pointer_pos);
-                            draw_coord_badge(&painter, pointer_pos, &format!("始点: ({}, {}) mm", curr_x, curr_y));
+                            draw_coord_badge(&painter, pointer_pos, &format!("始点: {}, {}", curr_x, curr_y));
                         }
                     }
                 }
@@ -635,8 +635,8 @@ impl eframe::App for FepdfLayoutApp {
                             painter.circle_filled(p2, 5.0, egui::Color32::RED);
 
                             // Draw active coordinate hover badges during creation
-                            draw_coord_badge(&painter, p1, &format!("始点: ({}, {}) mm", start_x, start_y));
-                            draw_coord_badge(&painter, p2, &format!("終点: ({}, {}) mm", curr_x, curr_y));
+                            draw_coord_badge(&painter, p1, &format!("始点: {}, {}", start_x, start_y));
+                            draw_coord_badge(&painter, p2, &format!("終点: {}, {}", curr_x, curr_y));
                         }
                     }
                 }
@@ -649,7 +649,7 @@ impl eframe::App for FepdfLayoutApp {
                     let (mouse_x, mouse_y) = screen_to_mm(pointer_pos);
 
                     // Always-on live coordinate hover badge near cursor inside page area
-                    draw_coord_badge(&painter, pointer_pos, &format!("({}, {}) mm", mouse_x, mouse_y));
+                    draw_coord_badge(&painter, pointer_pos, &format!("{}, {}", mouse_x, mouse_y));
 
                     // MOUSE PRESS DOWN EVENT
                     if ctx.input(|i| i.pointer.primary_pressed()) {
@@ -811,15 +811,15 @@ impl eframe::App for FepdfLayoutApp {
                                 match handle_kind {
                                     LineHandleKind::StartPoint => {
                                         let p = mm_to_screen(l.x1.0, l.y1.0);
-                                        draw_coord_badge(&painter, p, &format!("始点: ({}, {}) mm", l.x1.0, l.y1.0));
+                                        draw_coord_badge(&painter, p, &format!("始点: {}, {}", l.x1.0, l.y1.0));
                                     }
                                     LineHandleKind::EndPoint => {
                                         let p = mm_to_screen(l.x2.0, l.y2.0);
-                                        draw_coord_badge(&painter, p, &format!("終点: ({}, {}) mm", l.x2.0, l.y2.0));
+                                        draw_coord_badge(&painter, p, &format!("終点: {}, {}", l.x2.0, l.y2.0));
                                     }
                                     LineHandleKind::Body => {
                                         let p1 = mm_to_screen(l.x1.0, l.y1.0);
-                                        draw_coord_badge(&painter, p1, &format!("始点: ({}, {}) mm | 終点: ({}, {}) mm", l.x1.0, l.y1.0, l.x2.0, l.y2.0));
+                                        draw_coord_badge(&painter, p1, &format!("始点: {}, {} | 終点: {}, {}", l.x1.0, l.y1.0, l.x2.0, l.y2.0));
                                     }
                                 }
                             }
