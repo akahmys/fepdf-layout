@@ -376,28 +376,26 @@ impl eframe::App for FepdfLayoutApp {
             .default_width(200.0)
             .show(ctx, |ui| {
                 let is_line_active = matches!(self.tool_state, ToolState::LineWaitStart | ToolState::LineWaitEnd { .. });
-                if ui.selectable_label(is_line_active, "─ 直線 (2クリック作成)").clicked() {
+                if ui.selectable_label(is_line_active, "直線").clicked() {
                     self.tool_state = ToolState::LineWaitStart;
                     self.selected_ids.clear();
                     self.status_msg = "キャンバス上をクリックして直線の【始点】を指定してください".to_string();
                 }
 
-                if ui.button("T テキストボックス").clicked() {
+                if ui.button("テキストボックス").clicked() {
                     self.add_element_preset("textbox");
                 }
 
-                ui.separator();
-                ui.label("■ PDF フォームパーツ");
-                if ui.button("[ab] テキスト枠").clicked() {
+                if ui.button("テキスト枠").clicked() {
                     self.add_element_preset("textfield");
                 }
-                if ui.button("[☑] チェックボックス").clicked() {
+                if ui.button("チェックボックス").clicked() {
                     self.add_element_preset("checkbox");
                 }
-                if ui.button("[○] ラジオボタン").clicked() {
+                if ui.button("ラジオボタン").clicked() {
                     self.add_element_preset("radio");
                 }
-                if ui.button("[▼] ドロップダウン").clicked() {
+                if ui.button("ドロップダウン").clicked() {
                     self.add_element_preset("combo");
                 }
             });
