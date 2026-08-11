@@ -278,12 +278,6 @@ impl eframe::App for FepdfLayoutApp {
             .show(ctx, |ui| {
                 if self.selected_ids.is_empty() {
                     ui.label("パーツ未選択");
-                    ui.separator();
-                    ui.label("【直線の作成方法】");
-                    ui.label("1. 右パレットで「─ 直線」を押す");
-                    ui.label("2. キャンバス上で【始点】をクリック");
-                    ui.label("3. キャンバス上で【終点】をクリックして確定");
-                    ui.label("4. 端点をドラッグするとリアルタイムに座標がホバー表示されます");
                 } else if self.selected_ids.len() == 1 {
                     let id = *self.selected_ids.iter().next().unwrap();
                     if let Some(elem) = self.mgr.doc.get_element(id).cloned() {
