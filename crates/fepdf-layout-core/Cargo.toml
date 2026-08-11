@@ -1,0 +1,13 @@
+[package]
+name = "fepdf-layout-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+serde.workspace = true
+tracing.workspace = true
+fepdf-core.workspace = true
+fepdf-sdk.workspace = true

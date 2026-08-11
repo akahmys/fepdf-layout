@@ -1,0 +1,10 @@
+#!/bin/bash
+set -e
+
+echo "[Pre-Commit] Checking Cargo dependency licenses with cargo-deny..."
+cargo deny check licenses
+
+echo "[Pre-Commit] Scanning staged files for secret leaks and personal data with betterleaks..."
+betterleaks git --pre-commit --staged --verbose
+
+echo "[Pre-Commit] All pre-commit checks passed successfully!"

@@ -1,0 +1,14 @@
+# Betterleaks configuration for fepdf-layout
+
+title = "fepdf-layout custom leak detection rules"
+
+[[rules]]
+id = "personal-name-jun-kato"
+description = "Detect personal name 'Jun Kato'"
+regex = '''(?i)\bJun\s+Kato\b'''
+keywords = [
+    "Jun Kato",
+    "jun kato",
+    "Jun kato",
+    "JUN KATO",
+]

@@ -1,0 +1,31 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/fepdf-layout-core",
+    "crates/fepdf-layout-ui",
+    "crates/fepdf-layout-import",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.94"
+license = "MIT"
+
+[workspace.dependencies]
+# Local dependencies
+fepdf-layout-core = { path = "crates/fepdf-layout-core" }
+fepdf-layout-import = { path = "crates/fepdf-layout-import" }
+
+# Link to parent fepdf engine crates
+fepdf-core = { path = "../fepdf/crates/fepdf-core" }
+fepdf-sdk = { path = "../fepdf/crates/fepdf-sdk" }
+fepdf-render = { path = "../fepdf/crates/fepdf-render" }
+
+# Third-party core dependencies
+thiserror = "2.0"
+serde = { version = "1.0", features = ["derive"] }
+tracing = "0.1"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
