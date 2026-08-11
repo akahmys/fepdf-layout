@@ -231,7 +231,7 @@ impl eframe::App for FepdfLayoutApp {
                     ui.label("1. 右パレットで「─ 直線」を押す");
                     ui.label("2. キャンバス上で【始点】をクリック");
                     ui.label("3. キャンバス上で【終点】をクリックして確定");
-                    ui.label("4. 始点(赤) / 終点(青) の丸ハンドルをドラッグして個別に調整可能");
+                    ui.label("4. 始点・終点の丸ハンドルをドラッグして個別に調整可能");
                 } else if self.selected_ids.len() == 1 {
                     let id = *self.selected_ids.iter().next().unwrap();
                     if let Some(elem) = self.mgr.doc.get_element(id).cloned() {
@@ -244,8 +244,8 @@ impl eframe::App for FepdfLayoutApp {
                         match elem {
                             Element::Line(mut l) => {
                                 ui.label("■ 直線属性");
-                                ui.label(format!("始点 S(X1, Y1): ({}, {}) mm", l.x1.0, l.y1.0));
-                                ui.label(format!("終点 E(X2, Y2): ({}, {}) mm", l.x2.0, l.y2.0));
+                                ui.label(format!("始点 (X1, Y1): ({}, {}) mm", l.x1.0, l.y1.0));
+                                ui.label(format!("終点 (X2, Y2): ({}, {}) mm", l.x2.0, l.y2.0));
                                 let old_elem = Element::Line(l.clone());
 
                                 let mut stroke_w = l.stroke_width.0;
@@ -408,7 +408,7 @@ impl eframe::App for FepdfLayoutApp {
                 painter.line_segment([p1, p2], egui::Stroke::new(0.5_f32, egui::Color32::from_gray(230)));
             }
 
-            // 3. Render All Document Elements & Line Handles
+            // 3. Render All Document Elements & Clean Round Line Handles
             for elem in &self.mgr.doc.elements {
                 let bounds = elem.bounds();
                 let is_selected = self.selected_ids.contains(&elem.id());
@@ -426,15 +426,13 @@ impl eframe::App for FepdfLayoutApp {
                         let stroke_w = (l.stroke_width.0 as f32 * scale).max(1.5);
                         painter.line_segment([p1, p2], egui::Stroke::new(stroke_w, color));
 
-                        // Render Start (Red/S) and End (Blue/E) Handles when Line is selected
+                        // Clean round handle dots when Line is selected (No S/E text labels)
                         if is_selected {
-                            painter.circle_filled(p1, 7.0, egui::Color32::RED);
-                            painter.circle_stroke(p1, 7.0, egui::Stroke::new(1.5_f32, egui::Color32::WHITE));
-                            painter.text(p1, egui::Align2::CENTER_CENTER, "S", egui::FontId::proportional(9.0), egui::Color32::WHITE);
+                            painter.circle_filled(p1, 5.0, egui::Color32::BLUE);
+                            painter.circle_stroke(p1, 5.0, egui::Stroke::new(1.5_f32, egui::Color32::WHITE));
 
-                            painter.circle_filled(p2, 7.0, egui::Color32::BLUE);
-                            painter.circle_stroke(p2, 7.0, egui::Stroke::new(1.5_f32, egui::Color32::WHITE));
-                            painter.text(p2, egui::Align2::CENTER_CENTER, "E", egui::FontId::proportional(9.0), egui::Color32::WHITE);
+                            painter.circle_filled(p2, 5.0, egui::Color32::BLUE);
+                            painter.circle_stroke(p2, 5.0, egui::Stroke::new(1.5_f32, egui::Color32::WHITE));
                         }
                     }
                     Element::TextBox(t) => {
@@ -530,13 +528,13 @@ impl eframe::App for FepdfLayoutApp {
                 }
             }
 
-            // 5. Direct Pointer Hit-Testing & Handle Dragging Logic
+            // 5. Mouse Press & Drag Handling (Triggered IMMEDIATELY on Press Down!)
             if let Some(pointer_pos) = ctx.pointer_interact_pos() {
                 if page_rect.contains(pointer_pos) {
                     let (mouse_x, mouse_y) = screen_to_mm(pointer_pos);
 
-                    // Primary Click Event
-                    if ctx.input(|i| i.pointer.primary_clicked()) {
+                    // MOUSE PRESS DOWN EVENT (Triggers on press onset for immediate handle grabbing!)
+                    if ctx.input(|i| i.pointer.primary_pressed()) {
                         match self.tool_state {
                             ToolState::LineWaitStart => {
                                 self.tool_state = ToolState::LineWaitEnd {
@@ -573,13 +571,13 @@ impl eframe::App for FepdfLayoutApp {
                                             let p1 = mm_to_screen(l.x1.0, l.y1.0);
                                             let p2 = mm_to_screen(l.x2.0, l.y2.0);
 
-                                            // Always check Start & End Handle Proximity (14px pixel radius)
-                                            if p1.distance(pointer_pos) <= 14.0 {
+                                            // Check Start / End Handle Proximity (16px pixel radius)
+                                            if p1.distance(pointer_pos) <= 16.0 {
                                                 hit_handle = Some((l.id, LineHandleKind::StartPoint));
                                                 hit_id = Some(l.id);
                                                 break;
                                             }
-                                            if p2.distance(pointer_pos) <= 14.0 {
+                                            if p2.distance(pointer_pos) <= 16.0 {
                                                 hit_handle = Some((l.id, LineHandleKind::EndPoint));
                                                 hit_id = Some(l.id);
                                                 break;
@@ -612,12 +610,12 @@ impl eframe::App for FepdfLayoutApp {
                                     self.selected_ids.insert(id);
                                     self.active_line_handle = hit_handle;
                                     self.last_drag_mm = Some((mouse_x as i32, mouse_y as i32));
-                                    
+
                                     if let Some((_, kind)) = hit_handle {
                                         match kind {
-                                            LineHandleKind::StartPoint => self.status_msg = "直線 #{} 【始点 S】を掴みました".to_string(),
-                                            LineHandleKind::EndPoint => self.status_msg = "直線 #{} 【終点 E】を掴みました".to_string(),
-                                            LineHandleKind::Body => self.status_msg = "直線 #{} 全体を掴みました".to_string(),
+                                            LineHandleKind::StartPoint => self.status_msg = "直線の【始点】を掴みました".to_string(),
+                                            LineHandleKind::EndPoint => self.status_msg = "直線の【終点】を掴みました".to_string(),
+                                            LineHandleKind::Body => self.status_msg = "直線全体を掴みました".to_string(),
                                         }
                                     } else {
                                         self.status_msg = format!("パーツ #{} を選択しました", id.0);
@@ -631,7 +629,7 @@ impl eframe::App for FepdfLayoutApp {
                         }
                     }
 
-                    // Primary Drag Event
+                    // MOUSE DRAG EVENT (Processes continuous movement during button down)
                     if ctx.input(|i| i.pointer.primary_down()) && !self.selected_ids.is_empty() {
                         if let Some((last_x, last_y)) = self.last_drag_mm {
                             let dx = (mouse_x as i32) - last_x;
@@ -649,14 +647,14 @@ impl eframe::App for FepdfLayoutApp {
                                                 let new_y1 = ((l.y1.0 as i32) + dy).max(0) as u32;
                                                 new_line.x1 = Mm::new(new_x1);
                                                 new_line.y1 = Mm::new(new_y1);
-                                                self.status_msg = format!("始点移動 S({}, {}) mm", new_x1, new_y1);
+                                                self.status_msg = format!("始点移動 ({}, {}) mm", new_x1, new_y1);
                                             }
                                             LineHandleKind::EndPoint => {
                                                 let new_x2 = ((l.x2.0 as i32) + dx).max(0) as u32;
                                                 let new_y2 = ((l.y2.0 as i32) + dy).max(0) as u32;
                                                 new_line.x2 = Mm::new(new_x2);
                                                 new_line.y2 = Mm::new(new_y2);
-                                                self.status_msg = format!("終点移動 E({}, {}) mm", new_x2, new_y2);
+                                                self.status_msg = format!("終点移動 ({}, {}) mm", new_x2, new_y2);
                                             }
                                             LineHandleKind::Body => {
                                                 let new_x1 = ((l.x1.0 as i32) + dx).max(0) as u32;
@@ -691,6 +689,7 @@ impl eframe::App for FepdfLayoutApp {
                         }
                     } else if !ctx.input(|i| i.pointer.primary_down()) {
                         self.last_drag_mm = None;
+                        self.active_line_handle = None;
                     }
                 }
             }
