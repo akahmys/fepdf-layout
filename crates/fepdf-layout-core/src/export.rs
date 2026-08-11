@@ -46,8 +46,8 @@ impl PdfExporter {
                     let (p1x, p1y) = Self::layout_to_pdf_pt(doc, l.x1.0, l.y1.0);
                     let (p2x, p2y) = Self::layout_to_pdf_pt(doc, l.x2.0, l.y2.0);
                     summary.push_str(&format!(
-                        "  [Line] ({:.2}, {:.2}) pt -> ({:.2}, {:.2}) pt\n",
-                        p1x, p1y, p2x, p2y
+                        "  [Line] ({:.2}, {:.2}) pt -> ({:.2}, {:.2}) pt, cap: {:?}\n",
+                        p1x, p1y, p2x, p2y, l.line_cap
                     ));
                 }
                 Element::TextBox(t) => {

@@ -31,6 +31,23 @@ pub enum StrokeStyle {
     Dotted,
 }
 
+/// PDF 2.0 Line Cap Style (ISO 32000-2 Section 8.4.3.2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum LineCap {
+    /// Butt cap: stroke ends abruptly at endpoint (平頭 - デフォルト)
+    Butt,
+    /// Round cap: semicircular end with radius = half line width (丸頭)
+    Round,
+    /// Square cap: extends beyond endpoint by half line width (突き出し角頭)
+    Square,
+}
+
+impl Default for LineCap {
+    fn default() -> Self {
+        Self::Butt
+    }
+}
+
 /// Text alignment within a text box.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TextAlign {
@@ -52,6 +69,7 @@ pub struct LineElement {
     pub stroke_width: Mm,
     pub stroke_color: Color,
     pub stroke_style: StrokeStyle,
+    pub line_cap: LineCap,
 }
 
 /// Text box element with horizontal scaling and auto-fit options.

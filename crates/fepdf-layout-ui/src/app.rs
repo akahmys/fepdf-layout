@@ -3,7 +3,7 @@
 use eframe::egui;
 use fepdf_layout_core::{
     align_elements, Color, Command, Document, DocumentManager, Element, ElementId, FormFieldElement,
-    FormFieldKind, LineElement, Mm, PagePreset, PdfExporter, StrokeStyle, TextAlign, TextBoxElement,
+    FormFieldKind, LineCap, LineElement, Mm, PagePreset, PdfExporter, StrokeStyle, TextAlign, TextBoxElement,
 };
 use std::collections::HashSet;
 
@@ -295,10 +295,24 @@ impl eframe::App for FepdfLayoutApp {
                                 let old_elem = Element::Line(l.clone());
 
                                 let mut stroke_w = l.stroke_width.0;
-                                ui.horizontal(|ui| {
+                                if ui.horizontal(|ui| {
                                     ui.label("線の太さ:");
-                                    if ui.add(egui::DragValue::new(&mut stroke_w).range(1..=20).suffix(" mm")).changed() {
-                                        l.stroke_width = Mm::new(stroke_w);
+                                    ui.add(egui::DragValue::new(&mut stroke_w).range(1..=20).suffix(" mm")).changed()
+                                }).inner {
+                                    l.stroke_width = Mm::new(stroke_w);
+                                    self.mgr.execute(Command::UpdateElement {
+                                        old: old_elem.clone(),
+                                        new: Element::Line(l.clone()),
+                                    });
+                                }
+
+                                ui.horizontal(|ui| {
+                                    ui.label("端点形状:");
+                                    let mut cap_changed = false;
+                                    if ui.selectable_value(&mut l.line_cap, LineCap::Butt, "平頭 (Butt)").clicked() { cap_changed = true; }
+                                    if ui.selectable_value(&mut l.line_cap, LineCap::Round, "丸頭 (Round)").clicked() { cap_changed = true; }
+                                    if ui.selectable_value(&mut l.line_cap, LineCap::Square, "角頭 (Square)").clicked() { cap_changed = true; }
+                                    if cap_changed {
                                         self.mgr.execute(Command::UpdateElement {
                                             old: old_elem.clone(),
                                             new: Element::Line(l.clone()),
@@ -493,7 +507,22 @@ impl eframe::App for FepdfLayoutApp {
                             l.stroke_color.a,
                         );
                         let stroke_w = (l.stroke_width.0 as f32 * scale).max(1.5);
-                        painter.line_segment([p1, p2], egui::Stroke::new(stroke_w, color));
+
+                        match l.line_cap {
+                            LineCap::Butt => {
+                                painter.line_segment([p1, p2], egui::Stroke::new(stroke_w, color));
+                            }
+                            LineCap::Round => {
+                                painter.line_segment([p1, p2], egui::Stroke::new(stroke_w, color));
+                                painter.circle_filled(p1, stroke_w / 2.0, color);
+                                painter.circle_filled(p2, stroke_w / 2.0, color);
+                            }
+                            LineCap::Square => {
+                                let dir = (p2 - p1).normalized();
+                                let ext = dir * (stroke_w / 2.0);
+                                painter.line_segment([p1 - ext, p2 + ext], egui::Stroke::new(stroke_w, color));
+                            }
+                        }
 
                         if is_selected {
                             painter.circle_filled(p1, 5.0, egui::Color32::BLUE);
@@ -637,6 +666,7 @@ impl eframe::App for FepdfLayoutApp {
                                     stroke_width: Mm::new(1),
                                     stroke_color: Color::BLACK,
                                     stroke_style: StrokeStyle::Solid,
+                                    line_cap: LineCap::Butt,
                                 });
                                 self.mgr.execute(Command::AddElement(line.clone()));
                                 self.selected_ids.clear();

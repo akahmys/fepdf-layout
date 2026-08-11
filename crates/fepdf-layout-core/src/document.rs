@@ -195,6 +195,7 @@ mod tests {
             stroke_width: Mm::new(1),
             stroke_color: Color::BLACK,
             stroke_style: StrokeStyle::Solid,
+            line_cap: crate::element::LineCap::Butt,
         });
 
         mgr.execute(Command::AddElement(line.clone()));
@@ -220,6 +221,7 @@ mod tests {
             stroke_width: Mm::new(2),
             stroke_color: Color::BLACK,
             stroke_style: StrokeStyle::Solid,
+            line_cap: crate::element::LineCap::Butt,
         }));
 
         let temp_dir = std::env::temp_dir();

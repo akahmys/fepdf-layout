@@ -13,8 +13,8 @@ pub use align::{align_elements, AlignMode};
 pub use command::Command;
 pub use document::{Document, DocumentManager};
 pub use element::{
-    Color, Element, ElementId, FormFieldElement, FormFieldKind, LineElement, RectMm, StrokeStyle,
-    TextAlign, TextBoxElement,
+    Color, Element, ElementId, FormFieldElement, FormFieldKind, LineCap, LineElement, RectMm,
+    StrokeStyle, TextAlign, TextBoxElement,
 };
 pub use export::PdfExporter;
 pub use history::CommandHistory;
