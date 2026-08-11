@@ -8,5 +8,7 @@ license.workspace = true
 [dependencies]
 thiserror.workspace = true
 tracing.workspace = true
+tracing-subscriber = "0.3"
 fepdf-layout-core.workspace = true
 fepdf-layout-import.workspace = true
+eframe = "0.29"
