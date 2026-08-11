@@ -544,21 +544,32 @@ impl eframe::App for FepdfLayoutApp {
             }
 
             // 4. Live Rubber-Band Line Creation Preview & Hover Coordinates
-            if let ToolState::LineWaitEnd { start_x, start_y } = self.tool_state {
-                if let Some(pointer_pos) = ctx.pointer_interact_pos() {
-                    if page_rect.contains(pointer_pos) {
-                        let (curr_x, curr_y) = screen_to_mm(pointer_pos);
-                        let p1 = mm_to_screen(start_x, start_y);
-                        let p2 = mm_to_screen(curr_x, curr_y);
-                        painter.line_segment([p1, p2], egui::Stroke::new(2.0_f32, egui::Color32::RED));
-                        painter.circle_filled(p1, 5.0, egui::Color32::RED);
-                        painter.circle_filled(p2, 5.0, egui::Color32::RED);
-
-                        // Draw active coordinate hover badges during creation
-                        draw_coord_badge(&painter, p1, &format!("始点: ({}, {}) mm", start_x, start_y));
-                        draw_coord_badge(&painter, p2, &format!("終点: ({}, {}) mm", curr_x, curr_y));
+            match self.tool_state {
+                ToolState::LineWaitStart => {
+                    if let Some(pointer_pos) = ctx.pointer_interact_pos() {
+                        if page_rect.contains(pointer_pos) {
+                            let (curr_x, curr_y) = screen_to_mm(pointer_pos);
+                            draw_coord_badge(&painter, pointer_pos, &format!("始点: ({}, {}) mm", curr_x, curr_y));
+                        }
                     }
                 }
+                ToolState::LineWaitEnd { start_x, start_y } => {
+                    if let Some(pointer_pos) = ctx.pointer_interact_pos() {
+                        if page_rect.contains(pointer_pos) {
+                            let (curr_x, curr_y) = screen_to_mm(pointer_pos);
+                            let p1 = mm_to_screen(start_x, start_y);
+                            let p2 = mm_to_screen(curr_x, curr_y);
+                            painter.line_segment([p1, p2], egui::Stroke::new(2.0_f32, egui::Color32::RED));
+                            painter.circle_filled(p1, 5.0, egui::Color32::RED);
+                            painter.circle_filled(p2, 5.0, egui::Color32::RED);
+
+                            // Draw active coordinate hover badges during creation
+                            draw_coord_badge(&painter, p1, &format!("始点: ({}, {}) mm", start_x, start_y));
+                            draw_coord_badge(&painter, p2, &format!("終点: ({}, {}) mm", curr_x, curr_y));
+                        }
+                    }
+                }
+                ToolState::Select => {}
             }
 
             // 5. Mouse Press & Drag Handling with Live Hover Coordinates
