@@ -26,6 +26,7 @@ pub struct FepdfLayoutApp {
     pub selected_ids: HashSet<ElementId>,
     pub zoom: f32,
     pub status_msg: String,
+    pub drag_start_pos: Option<egui::Pos2>,
 }
 
 impl Default for FepdfLayoutApp {
@@ -36,6 +37,7 @@ impl Default for FepdfLayoutApp {
             selected_ids: HashSet::new(),
             zoom: 1.0,
             status_msg: "Ready (1mm Grid Snap Active)".to_string(),
+            drag_start_pos: None,
         }
     }
 }
@@ -139,12 +141,24 @@ impl FepdfLayoutApp {
         self.mgr.execute(Command::AddElement(elem.clone()));
         self.selected_ids.clear();
         self.selected_ids.insert(elem.id());
-        self.status_msg = format!("要素 #{} を追加しました", id.0);
+        self.status_msg = format!("パーツ #{} を配置しました", id.0);
     }
 }
 
 impl eframe::App for FepdfLayoutApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // --- Key Shortcuts (Delete key to delete selected) ---
+        if ctx.input(|i| i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace)) {
+            let to_remove: Vec<_> = self.selected_ids.iter().cloned().collect();
+            for id in to_remove {
+                if let Some(elem) = self.mgr.doc.get_element(id).cloned() {
+                    self.mgr.execute(Command::RemoveElement(elem));
+                }
+            }
+            self.selected_ids.clear();
+            self.status_msg = "選択パーツを削除しました".to_string();
+        }
+
         // --- 1. Top Header Toolbar ---
         egui::TopBottomPanel::top("header_toolbar").show(ctx, |ui| {
             ui.horizontal(|ui| {
@@ -195,7 +209,7 @@ impl eframe::App for FepdfLayoutApp {
             ui.horizontal(|ui| {
                 ui.label(&self.status_msg);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.label("単位: mm | 1mm Grid Snap");
+                    ui.label("単位: mm | 1mm Grid Snap | 左下原点 (0,0)");
                 });
             });
         });
@@ -210,7 +224,12 @@ impl eframe::App for FepdfLayoutApp {
 
                 if self.selected_ids.is_empty() {
                     ui.label("パーツが選択されていません");
-                    ui.label("右パネルからパーツをドラッグ/追加するか、キャンバス上のパーツをクリックして選択してください。");
+                    ui.label("右のパーツパレットからパーツボタンをクリックすると、キャンバス中央にパーツが配置されます。");
+                    ui.separator();
+                    ui.label("【操作方法】");
+                    ui.label("• パレットボタン押下 ➔ パーツ配置");
+                    ui.label("• キャンバス上のパーツ押下 ➔ 選択");
+                    ui.label("• 選択中に Delete キー ➔ 削除");
                 } else if self.selected_ids.len() == 1 {
                     let id = *self.selected_ids.iter().next().unwrap();
                     if let Some(elem) = self.mgr.doc.get_element(id).cloned() {
@@ -245,7 +264,13 @@ impl eframe::App for FepdfLayoutApp {
                                 ui.label(format!("種別: {:?}", ff.kind));
                                 ui.horizontal(|ui| {
                                     ui.label("集計タグ:");
-                                    ui.text_edit_singleline(&mut ff.field_tag);
+                                    let old_elem = self.mgr.doc.get_element(id).unwrap().clone();
+                                    if ui.text_edit_singleline(&mut ff.field_tag).changed() {
+                                        self.mgr.execute(Command::UpdateElement {
+                                            old: old_elem,
+                                            new: Element::FormField(ff.clone()),
+                                        });
+                                    }
                                 });
                             }
                             Element::Line(_) => {
@@ -320,42 +345,160 @@ impl eframe::App for FepdfLayoutApp {
 
             let page_spec = self.mgr.doc.page_spec;
             ui.label(format!(
-                "アクティブ領域: {} x {} mm (原点オフセット: {:.2}, {:.2} mm)",
+                "用紙サイズ: {} x {} mm (アクティブ領域: {} x {} mm, 原点オフセット: {:.2}, {:.2} mm)",
+                page_spec.paper_width.0,
+                page_spec.paper_height.0,
                 page_spec.layout_width.0,
                 page_spec.layout_height.0,
                 page_spec.offset_x.0,
                 page_spec.offset_y.0
             ));
 
-            // Canvas drawing frame
-            egui::Frame::canvas(ui.style()).show(ui, |ui| {
-                let (_response, painter) = ui.allocate_painter(ui.available_size(), egui::Sense::click_and_drag());
-                let rect = painter.clip_rect();
+            let scale = 2.0_f32 * self.zoom; // 1mm = 2.0 * zoom pixels
+            let page_w_px = (page_spec.layout_width.0 as f32) * scale;
+            let page_h_px = (page_spec.layout_height.0 as f32) * scale;
 
-                // Draw background page sheet
-                painter.rect_filled(rect, 0.0, egui::Color32::WHITE);
-                painter.rect_stroke(rect, 0.0, egui::Stroke::new(2.0_f32, egui::Color32::GRAY));
+            // Allocate painter for canvas
+            let (response, painter) = ui.allocate_painter(
+                egui::vec2(page_w_px + 40.0, page_h_px + 40.0),
+                egui::Sense::click_and_drag(),
+            );
 
-                // Draw 10mm grid lines
-                let step = 20.0 * self.zoom;
-                let mut x = rect.min.x;
-                while x < rect.max.x {
-                    painter.line_segment(
-                        [egui::pos2(x, rect.min.y), egui::pos2(x, rect.max.y)],
-                        egui::Stroke::new(0.5_f32, egui::Color32::from_gray(220)),
-                    );
-                    x += step;
+            let canvas_origin = response.rect.min + egui::vec2(20.0, 20.0);
+            let page_rect = egui::Rect::from_min_size(canvas_origin, egui::vec2(page_w_px, page_h_px));
+
+            // Bottom-Left origin helper
+            // Map (x_mm, y_mm) in active layout space to screen (pos2)
+            let mm_to_screen = |x_mm: u32, y_mm: u32| -> egui::Pos2 {
+                let px = page_rect.min.x + (x_mm as f32) * scale;
+                let py = page_rect.max.y - (y_mm as f32) * scale; // Y goes UP from bottom!
+                egui::pos2(px, py)
+            };
+
+            // 1. Draw Page Sheet Background
+            painter.rect_filled(page_rect, 0.0, egui::Color32::WHITE);
+            painter.rect_stroke(page_rect, 0.0, egui::Stroke::new(2.0_f32, egui::Color32::DARK_GRAY));
+
+            // 2. Draw 10mm Grid Lines
+            let grid_step_mm = 10;
+            for gx in (0..=page_spec.layout_width.0).step_by(grid_step_mm) {
+                let p1 = mm_to_screen(gx, 0);
+                let p2 = mm_to_screen(gx, page_spec.layout_height.0);
+                painter.line_segment([p1, p2], egui::Stroke::new(0.5_f32, egui::Color32::from_gray(220)));
+            }
+            for gy in (0..=page_spec.layout_height.0).step_by(grid_step_mm) {
+                let p1 = mm_to_screen(0, gy);
+                let p2 = mm_to_screen(page_spec.layout_width.0, gy);
+                painter.line_segment([p1, p2], egui::Stroke::new(0.5_f32, egui::Color32::from_gray(220)));
+            }
+
+            // 3. Render All Document Elements
+            let mut clicked_element_id = None;
+
+            for elem in &self.mgr.doc.elements {
+                let bounds = elem.bounds();
+                let is_selected = self.selected_ids.contains(&elem.id());
+
+                let p_bl = mm_to_screen(bounds.x.0, bounds.y.0);
+                let p_tr = mm_to_screen(bounds.x.0 + bounds.width.0, bounds.y.0 + bounds.height.0);
+                let elem_rect = egui::Rect::from_two_pos(p_bl, p_tr);
+
+                // Check click selection
+                if response.clicked() {
+                    if let Some(mouse_pos) = response.interact_pointer_pos() {
+                        if elem_rect.contains(mouse_pos) {
+                            clicked_element_id = Some(elem.id());
+                        }
+                    }
                 }
 
-                let mut y = rect.min.y;
-                while y < rect.max.y {
-                    painter.line_segment(
-                        [egui::pos2(rect.min.x, y), egui::pos2(rect.max.x, y)],
-                        egui::Stroke::new(0.5_f32, egui::Color32::from_gray(220)),
-                    );
-                    y += step;
+                match elem {
+                    Element::Line(l) => {
+                        let p1 = mm_to_screen(l.x1.0, l.y1.0);
+                        let p2 = mm_to_screen(l.x2.0, l.y2.0);
+                        let color = egui::Color32::from_rgba_unmultiplied(
+                            l.stroke_color.r,
+                            l.stroke_color.g,
+                            l.stroke_color.b,
+                            l.stroke_color.a,
+                        );
+                        let stroke_w = (l.stroke_width.0 as f32 * scale).max(1.0);
+                        painter.line_segment([p1, p2], egui::Stroke::new(stroke_w, color));
+                    }
+                    Element::TextBox(t) => {
+                        let bg_color = egui::Color32::from_rgba_unmultiplied(245, 245, 255, 255);
+                        let text_color = egui::Color32::from_rgba_unmultiplied(
+                            t.text_color.r,
+                            t.text_color.g,
+                            t.text_color.b,
+                            t.text_color.a,
+                        );
+                        painter.rect_filled(elem_rect, 2.0, bg_color);
+                        painter.rect_stroke(
+                            elem_rect,
+                            2.0,
+                            egui::Stroke::new(1.0_f32, egui::Color32::from_gray(180)),
+                        );
+
+                        painter.text(
+                            elem_rect.min + egui::vec2(4.0, 4.0),
+                            egui::Align2::LEFT_TOP,
+                            &t.text,
+                            egui::FontId::proportional(t.font_size_pt as f32),
+                            text_color,
+                        );
+                    }
+                    Element::FormField(f) => {
+                        let bg_color = egui::Color32::from_rgba_unmultiplied(
+                            f.bg_color.r,
+                            f.bg_color.g,
+                            f.bg_color.b,
+                            f.bg_color.a,
+                        );
+                        let border_color = egui::Color32::from_rgba_unmultiplied(
+                            f.border_color.r,
+                            f.border_color.g,
+                            f.border_color.b,
+                            f.border_color.a,
+                        );
+                        painter.rect_filled(elem_rect, 1.0, bg_color);
+                        painter.rect_stroke(
+                            elem_rect,
+                            1.0,
+                            egui::Stroke::new(1.5_f32, border_color),
+                        );
+
+                        let label = format!("[{:?}] {}", f.kind, f.field_tag);
+                        painter.text(
+                            elem_rect.min + egui::vec2(4.0, 2.0),
+                            egui::Align2::LEFT_TOP,
+                            &label,
+                            egui::FontId::proportional(10.0),
+                            egui::Color32::DARK_BLUE,
+                        );
+                    }
                 }
-            });
+
+                // Draw selection highlight box
+                if is_selected {
+                    painter.rect_stroke(
+                        elem_rect.expand(2.0),
+                        2.0,
+                        egui::Stroke::new(2.0_f32, egui::Color32::BLUE),
+                    );
+                }
+            }
+
+            // Handle element click selection update
+            if response.clicked() {
+                if let Some(id) = clicked_element_id {
+                    self.selected_ids.clear();
+                    self.selected_ids.insert(id);
+                    self.status_msg = format!("パーツ #{} を選択しました", id.0);
+                } else {
+                    self.selected_ids.clear();
+                }
+            }
         });
     }
 }
