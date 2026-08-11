@@ -276,9 +276,6 @@ impl eframe::App for FepdfLayoutApp {
             .resizable(true)
             .default_width(260.0)
             .show(ctx, |ui| {
-                ui.heading("プロパティ");
-                ui.separator();
-
                 if self.selected_ids.is_empty() {
                     ui.label("パーツ未選択");
                     ui.separator();
@@ -384,9 +381,6 @@ impl eframe::App for FepdfLayoutApp {
             .resizable(true)
             .default_width(200.0)
             .show(ctx, |ui| {
-                ui.heading("パーツパレット");
-                ui.separator();
-
                 let is_line_active = matches!(self.tool_state, ToolState::LineWaitStart | ToolState::LineWaitEnd { .. });
                 if ui.selectable_label(is_line_active, "─ 直線 (2クリック作成)").clicked() {
                     self.tool_state = ToolState::LineWaitStart;
@@ -416,8 +410,6 @@ impl eframe::App for FepdfLayoutApp {
 
         // --- 5. Center Workspace: 1mm Grid Canvas ---
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("作業スペース (1mm Grid Canvas / 左下原点)");
-
             let page_spec = self.mgr.doc.page_spec;
             let scale = 2.0_f32 * self.zoom; // 1mm = 2.0 * zoom pixels
             let page_w_px = (page_spec.layout_width.0 as f32) * scale;
