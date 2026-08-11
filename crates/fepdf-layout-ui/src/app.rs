@@ -7,12 +7,33 @@ use fepdf_layout_core::{
 };
 use std::collections::HashSet;
 
+/// Interactive tool state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToolState {
+    /// Select & Move mode
+    Select,
+    /// Line tool waiting for 1st click (Start Point)
+    LineWaitStart,
+    /// Line tool waiting for 2nd click (End Point)
+    LineWaitEnd { start_x: u32, start_y: u32 },
+}
+
+/// Active handle being dragged for a selected line.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LineHandleKind {
+    StartPoint,
+    EndPoint,
+    Body,
+}
+
 /// Main `egui` application state.
 pub struct FepdfLayoutApp {
     pub mgr: DocumentManager,
+    pub tool_state: ToolState,
     pub selected_ids: HashSet<ElementId>,
     pub zoom: f32,
     pub status_msg: String,
+    pub active_line_handle: Option<(ElementId, LineHandleKind)>,
     pub last_drag_mm: Option<(i32, i32)>,
 }
 
@@ -20,9 +41,11 @@ impl Default for FepdfLayoutApp {
     fn default() -> Self {
         Self {
             mgr: DocumentManager::new(PagePreset::A4),
+            tool_state: ToolState::Select,
             selected_ids: HashSet::new(),
             zoom: 1.0,
             status_msg: "準備完了 (1mm 格子スナップ有効)".to_string(),
+            active_line_handle: None,
             last_drag_mm: None,
         }
     }
@@ -34,27 +57,15 @@ impl FepdfLayoutApp {
         Self::default()
     }
 
-    /// Add a new element to the active page with staggered offset to prevent overlapping.
+    /// Add a non-line preset element (TextBox, FormFields) to the active page.
     pub fn add_element_preset(&mut self, kind_str: &str) {
         let id = self.mgr.doc.next_id();
-        
-        // Stagger placement position by 10mm for each element to prevent stacking
         let count = self.mgr.doc.elements.len() as u32;
         let offset = (count * 10) % 100;
         let base_x = 20 + offset;
         let base_y = 30 + offset;
 
         let elem = match kind_str {
-            "line" => Element::Line(LineElement {
-                id,
-                x1: Mm::new(base_x),
-                y1: Mm::new(base_y + 10),
-                x2: Mm::new(base_x + 50),
-                y2: Mm::new(base_y + 10),
-                stroke_width: Mm::new(1),
-                stroke_color: Color::BLACK,
-                stroke_style: StrokeStyle::Solid,
-            }),
             "textbox" => Element::TextBox(TextBoxElement {
                 id,
                 x: Mm::new(base_x),
@@ -131,7 +142,8 @@ impl FepdfLayoutApp {
         self.mgr.execute(Command::AddElement(elem.clone()));
         self.selected_ids.clear();
         self.selected_ids.insert(elem.id());
-        self.status_msg = format!("パーツ #{} を追加・選択しました (X:{}mm, Y:{}mm)", id.0, base_x, base_y);
+        self.tool_state = ToolState::Select;
+        self.status_msg = format!("パーツ #{} を追加・選択しました", id.0);
     }
 }
 
@@ -215,21 +227,39 @@ impl eframe::App for FepdfLayoutApp {
                 if self.selected_ids.is_empty() {
                     ui.label("パーツ未選択");
                     ui.separator();
-                    ui.label("【操作方法】");
-                    ui.label("1. 右パレットのボタンを押してパーツ追加");
-                    ui.label("2. キャンバス上のパーツをクリックして選択");
-                    ui.label("3. パーツをドラッグして移動 (1mm スナップ)");
-                    ui.label("4. Delete キーで選択パーツ削除");
+                    ui.label("【直線の作成方法】");
+                    ui.label("1. 右パレットで「─ 直線」を押す");
+                    ui.label("2. キャンバス上で【始点】をクリック");
+                    ui.label("3. キャンバス上で【終点】をクリックして確定");
+                    ui.label("4. 選択すると始点・終点ハンドルで個別に移動可能");
                 } else if self.selected_ids.len() == 1 {
                     let id = *self.selected_ids.iter().next().unwrap();
                     if let Some(elem) = self.mgr.doc.get_element(id).cloned() {
                         ui.label(format!("ID: #{}", id.0));
                         let bounds = elem.bounds();
-                        ui.label(format!("位置: X={} mm, Y={} mm (左下原点)", bounds.x.0, bounds.y.0));
+                        ui.label(format!("位置: X={} mm, Y={} mm", bounds.x.0, bounds.y.0));
                         ui.label(format!("サイズ: W={} mm, H={} mm", bounds.width.0, bounds.height.0));
                         ui.separator();
 
                         match elem {
+                            Element::Line(mut l) => {
+                                ui.label("■ 直線属性");
+                                ui.label(format!("始点 (X1, Y1): ({}, {}) mm", l.x1.0, l.y1.0));
+                                ui.label(format!("終点 (X2, Y2): ({}, {}) mm", l.x2.0, l.y2.0));
+                                let old_elem = Element::Line(l.clone());
+
+                                let mut stroke_w = l.stroke_width.0;
+                                ui.horizontal(|ui| {
+                                    ui.label("線の太さ:");
+                                    if ui.add(egui::DragValue::new(&mut stroke_w).range(1..=20).suffix(" mm")).changed() {
+                                        l.stroke_width = Mm::new(stroke_w);
+                                        self.mgr.execute(Command::UpdateElement {
+                                            old: old_elem.clone(),
+                                            new: Element::Line(l.clone()),
+                                        });
+                                    }
+                                });
+                            }
                             Element::TextBox(mut tb) => {
                                 ui.label("■ テキスト内容");
                                 let old_elem = self.mgr.doc.get_element(id).unwrap().clone();
@@ -262,9 +292,6 @@ impl eframe::App for FepdfLayoutApp {
                                         });
                                     }
                                 });
-                            }
-                            Element::Line(_) => {
-                                ui.label("■ 直線属性");
                             }
                         }
                     }
@@ -305,10 +332,13 @@ impl eframe::App for FepdfLayoutApp {
                 ui.heading("パーツパレット");
                 ui.separator();
 
-                ui.label("■ 描画パーツ");
-                if ui.button("─ 直線 (Line)").clicked() {
-                    self.add_element_preset("line");
+                let is_line_active = matches!(self.tool_state, ToolState::LineWaitStart | ToolState::LineWaitEnd { .. });
+                if ui.selectable_label(is_line_active, "─ 直線 (2クリック作成)").clicked() {
+                    self.tool_state = ToolState::LineWaitStart;
+                    self.selected_ids.clear();
+                    self.status_msg = "キャンバス上をクリックして直線の【始点】を指定してください".to_string();
                 }
+
                 if ui.button("T テキストボックス").clicked() {
                     self.add_element_preset("textbox");
                 }
@@ -338,7 +368,6 @@ impl eframe::App for FepdfLayoutApp {
             let page_w_px = (page_spec.layout_width.0 as f32) * scale;
             let page_h_px = (page_spec.layout_height.0 as f32) * scale;
 
-            // Allocate non-blocking painter
             let (response, painter) = ui.allocate_painter(
                 egui::vec2(page_w_px + 40.0, page_h_px + 40.0),
                 egui::Sense::hover(),
@@ -354,10 +383,12 @@ impl eframe::App for FepdfLayoutApp {
                 egui::pos2(px, py)
             };
 
-            let screen_to_mm = |pos: egui::Pos2| -> (i32, i32) {
-                let x_mm = ((pos.x - page_rect.min.x) / scale).round() as i32;
-                let y_mm = ((page_rect.max.y - pos.y) / scale).round() as i32;
-                (x_mm, y_mm)
+            let screen_to_mm = |pos: egui::Pos2| -> (u32, u32) {
+                let rel_x = (pos.x - page_rect.min.x) / scale;
+                let rel_y = (page_rect.max.y - pos.y) / scale;
+                let x_mm = rel_x.round().max(0.0) as u32;
+                let y_mm = rel_y.round().max(0.0) as u32;
+                (x_mm.min(page_spec.layout_width.0), y_mm.min(page_spec.layout_height.0))
             };
 
             // 1. Draw Page Sheet Background
@@ -377,14 +408,10 @@ impl eframe::App for FepdfLayoutApp {
                 painter.line_segment([p1, p2], egui::Stroke::new(0.5_f32, egui::Color32::from_gray(230)));
             }
 
-            // 3. Render All Document Elements
+            // 3. Render All Document Elements & Line Handles
             for elem in &self.mgr.doc.elements {
                 let bounds = elem.bounds();
                 let is_selected = self.selected_ids.contains(&elem.id());
-
-                let p_left_top = mm_to_screen(bounds.x.0, bounds.y.0 + bounds.height.0);
-                let p_right_bottom = mm_to_screen(bounds.x.0 + bounds.width.0, bounds.y.0);
-                let elem_rect = egui::Rect::from_two_pos(p_left_top, p_right_bottom);
 
                 match elem {
                     Element::Line(l) => {
@@ -396,10 +423,22 @@ impl eframe::App for FepdfLayoutApp {
                             l.stroke_color.b,
                             l.stroke_color.a,
                         );
-                        let stroke_w = (l.stroke_width.0 as f32 * scale).max(1.0);
+                        let stroke_w = (l.stroke_width.0 as f32 * scale).max(1.5);
                         painter.line_segment([p1, p2], egui::Stroke::new(stroke_w, color));
+
+                        // Render Start & End Handles when Line is selected
+                        if is_selected {
+                            painter.circle_filled(p1, 5.0, egui::Color32::RED);
+                            painter.circle_stroke(p1, 5.0, egui::Stroke::new(1.5_f32, egui::Color32::WHITE));
+                            painter.circle_filled(p2, 5.0, egui::Color32::BLUE);
+                            painter.circle_stroke(p2, 5.0, egui::Stroke::new(1.5_f32, egui::Color32::WHITE));
+                        }
                     }
                     Element::TextBox(t) => {
+                        let p_left_top = mm_to_screen(bounds.x.0, bounds.y.0 + bounds.height.0);
+                        let p_right_bottom = mm_to_screen(bounds.x.0 + bounds.width.0, bounds.y.0);
+                        let elem_rect = egui::Rect::from_two_pos(p_left_top, p_right_bottom);
+
                         let bg_color = egui::Color32::from_rgba_unmultiplied(245, 245, 255, 255);
                         let text_color = egui::Color32::from_rgba_unmultiplied(
                             t.text_color.r,
@@ -421,8 +460,20 @@ impl eframe::App for FepdfLayoutApp {
                             egui::FontId::proportional(t.font_size_pt as f32),
                             text_color,
                         );
+
+                        if is_selected {
+                            painter.rect_stroke(
+                                elem_rect.expand(2.0),
+                                2.0,
+                                egui::Stroke::new(2.0_f32, egui::Color32::BLUE),
+                            );
+                        }
                     }
                     Element::FormField(f) => {
+                        let p_left_top = mm_to_screen(bounds.x.0, bounds.y.0 + bounds.height.0);
+                        let p_right_bottom = mm_to_screen(bounds.x.0 + bounds.width.0, bounds.y.0);
+                        let elem_rect = egui::Rect::from_two_pos(p_left_top, p_right_bottom);
+
                         let bg_color = egui::Color32::from_rgba_unmultiplied(
                             f.bg_color.r,
                             f.bg_color.g,
@@ -450,66 +501,189 @@ impl eframe::App for FepdfLayoutApp {
                             egui::FontId::proportional(10.0),
                             egui::Color32::DARK_BLUE,
                         );
-                    }
-                }
 
-                // Selection Outline
-                if is_selected {
-                    painter.rect_stroke(
-                        elem_rect.expand(2.0),
-                        2.0,
-                        egui::Stroke::new(2.0_f32, egui::Color32::BLUE),
-                    );
+                        if is_selected {
+                            painter.rect_stroke(
+                                elem_rect.expand(2.0),
+                                2.0,
+                                egui::Stroke::new(2.0_f32, egui::Color32::BLUE),
+                            );
+                        }
+                    }
                 }
             }
 
-            // 4. Robust Direct Mouse Hit-Testing & 1mm Snap Dragging
+            // 4. Live Rubber-Band Line Creation Preview
+            if let ToolState::LineWaitEnd { start_x, start_y } = self.tool_state {
+                if let Some(pointer_pos) = ctx.pointer_interact_pos() {
+                    if page_rect.contains(pointer_pos) {
+                        let (curr_x, curr_y) = screen_to_mm(pointer_pos);
+                        let p1 = mm_to_screen(start_x, start_y);
+                        let p2 = mm_to_screen(curr_x, curr_y);
+                        painter.line_segment([p1, p2], egui::Stroke::new(2.0_f32, egui::Color32::RED));
+                        painter.circle_filled(p1, 5.0, egui::Color32::RED);
+                        painter.circle_filled(p2, 5.0, egui::Color32::RED);
+                    }
+                }
+            }
+
+            // 5. Mouse Interaction Logic (Line 2-Click Creation & Line Handle Dragging & Selection)
             if let Some(pointer_pos) = ctx.pointer_interact_pos() {
                 if page_rect.contains(pointer_pos) {
-                    let (mouse_x_mm, mouse_y_mm) = screen_to_mm(pointer_pos);
+                    let (mouse_x, mouse_y) = screen_to_mm(pointer_pos);
 
-                    // Primary Click -> Hit Test Elements in Reverse (Topmost first)
                     if ctx.input(|i| i.pointer.primary_clicked()) {
-                        let mut hit_id = None;
-                        for elem in self.mgr.doc.elements.iter().rev() {
-                            let b = elem.bounds();
-                            let in_x = (mouse_x_mm >= b.x.0 as i32) && (mouse_x_mm <= (b.x.0 + b.width.0) as i32);
-                            let in_y = (mouse_y_mm >= b.y.0 as i32) && (mouse_y_mm <= (b.y.0 + b.height.0) as i32);
-                            if in_x && in_y {
-                                hit_id = Some(elem.id());
-                                break;
+                        match self.tool_state {
+                            ToolState::LineWaitStart => {
+                                // 1st click: Lock Start Point (x1, y1)
+                                self.tool_state = ToolState::LineWaitEnd {
+                                    start_x: mouse_x,
+                                    start_y: mouse_y,
+                                };
+                                self.status_msg = format!("始点を指定しました ({}, {}) mm。終点をクリックしてください", mouse_x, mouse_y);
                             }
-                        }
+                            ToolState::LineWaitEnd { start_x, start_y } => {
+                                // 2nd click: Lock End Point (x2, y2) & Create Line
+                                let id = self.mgr.doc.next_id();
+                                let line = Element::Line(LineElement {
+                                    id,
+                                    x1: Mm::new(start_x),
+                                    y1: Mm::new(start_y),
+                                    x2: Mm::new(mouse_x),
+                                    y2: Mm::new(mouse_y),
+                                    stroke_width: Mm::new(1),
+                                    stroke_color: Color::BLACK,
+                                    stroke_style: StrokeStyle::Solid,
+                                });
+                                self.mgr.execute(Command::AddElement(line.clone()));
+                                self.selected_ids.clear();
+                                self.selected_ids.insert(id);
+                                self.tool_state = ToolState::Select;
+                                self.status_msg = format!("直線 #{} を確定しました (始点:({},{}) -> 終点:({},{}))", id.0, start_x, start_y, mouse_x, mouse_y);
+                            }
+                            ToolState::Select => {
+                                // Hit Test Line Handles or Elements
+                                let mut hit_handle = None;
+                                let mut hit_id = None;
 
-                        if let Some(id) = hit_id {
-                            self.selected_ids.clear();
-                            self.selected_ids.insert(id);
-                            self.last_drag_mm = Some((mouse_x_mm, mouse_y_mm));
-                            self.status_msg = format!("パーツ #{} を選択しました", id.0);
-                        } else {
-                            self.selected_ids.clear();
-                            self.last_drag_mm = None;
+                                for elem in self.mgr.doc.elements.iter().rev() {
+                                    match elem {
+                                        Element::Line(l) => {
+                                            let p1 = mm_to_screen(l.x1.0, l.y1.0);
+                                            let p2 = mm_to_screen(l.x2.0, l.y2.0);
+                                            
+                                            // Handle radius check (8px tolerance)
+                                            if self.selected_ids.contains(&l.id) {
+                                                if p1.distance(pointer_pos) <= 8.0 {
+                                                    hit_handle = Some((l.id, LineHandleKind::StartPoint));
+                                                    hit_id = Some(l.id);
+                                                    break;
+                                                }
+                                                if p2.distance(pointer_pos) <= 8.0 {
+                                                    hit_handle = Some((l.id, LineHandleKind::EndPoint));
+                                                    hit_id = Some(l.id);
+                                                    break;
+                                                }
+                                            }
+
+                                            // Line distance check
+                                            let b = elem.bounds();
+                                            let in_x = mouse_x >= b.x.0.saturating_sub(1) && mouse_x <= (b.x.0 + b.width.0 + 1);
+                                            let in_y = mouse_y >= b.y.0.saturating_sub(1) && mouse_y <= (b.y.0 + b.height.0 + 1);
+                                            if in_x && in_y {
+                                                hit_handle = Some((l.id, LineHandleKind::Body));
+                                                hit_id = Some(l.id);
+                                                break;
+                                            }
+                                        }
+                                        _ => {
+                                            let b = elem.bounds();
+                                            let in_x = mouse_x >= b.x.0 && mouse_x <= (b.x.0 + b.width.0);
+                                            let in_y = mouse_y >= b.y.0 && mouse_y <= (b.y.0 + b.height.0);
+                                            if in_x && in_y {
+                                                hit_id = Some(elem.id());
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if let Some(id) = hit_id {
+                                    self.selected_ids.clear();
+                                    self.selected_ids.insert(id);
+                                    self.active_line_handle = hit_handle;
+                                    self.last_drag_mm = Some((mouse_x as i32, mouse_y as i32));
+                                    self.status_msg = format!("パーツ #{} を選択しました", id.0);
+                                } else {
+                                    self.selected_ids.clear();
+                                    self.active_line_handle = None;
+                                    self.last_drag_mm = None;
+                                }
+                            }
                         }
                     }
 
-                    // Primary Drag -> Move Selected Elements in 1mm Integer Increments
+                    // Dragging Line Handles or Line Body
                     if ctx.input(|i| i.pointer.primary_down()) && !self.selected_ids.is_empty() {
                         if let Some((last_x, last_y)) = self.last_drag_mm {
-                            let dx = mouse_x_mm - last_x;
-                            let dy = mouse_y_mm - last_y;
+                            let dx = (mouse_x as i32) - last_x;
+                            let dy = (mouse_y as i32) - last_y;
 
                             if dx != 0 || dy != 0 {
-                                for id in self.selected_ids.clone() {
-                                    self.mgr.execute(Command::MoveElement { id, dx, dy });
+                                if let Some((line_id, handle_kind)) = self.active_line_handle {
+                                    if let Some(Element::Line(l)) = self.mgr.doc.get_element(line_id).cloned() {
+                                        let old_elem = Element::Line(l.clone());
+                                        let mut new_line = l.clone();
+
+                                        match handle_kind {
+                                            LineHandleKind::StartPoint => {
+                                                let new_x1 = ((l.x1.0 as i32) + dx).max(0) as u32;
+                                                let new_y1 = ((l.y1.0 as i32) + dy).max(0) as u32;
+                                                new_line.x1 = Mm::new(new_x1);
+                                                new_line.y1 = Mm::new(new_y1);
+                                                self.status_msg = format!("始点を移動中 ({}, {}) mm", new_x1, new_y1);
+                                            }
+                                            LineHandleKind::EndPoint => {
+                                                let new_x2 = ((l.x2.0 as i32) + dx).max(0) as u32;
+                                                let new_y2 = ((l.y2.0 as i32) + dy).max(0) as u32;
+                                                new_line.x2 = Mm::new(new_x2);
+                                                new_line.y2 = Mm::new(new_y2);
+                                                self.status_msg = format!("終点を移動中 ({}, {}) mm", new_x2, new_y2);
+                                            }
+                                            LineHandleKind::Body => {
+                                                let new_x1 = ((l.x1.0 as i32) + dx).max(0) as u32;
+                                                let new_y1 = ((l.y1.0 as i32) + dy).max(0) as u32;
+                                                let new_x2 = ((l.x2.0 as i32) + dx).max(0) as u32;
+                                                let new_y2 = ((l.y2.0 as i32) + dy).max(0) as u32;
+                                                new_line.x1 = Mm::new(new_x1);
+                                                new_line.y1 = Mm::new(new_y1);
+                                                new_line.x2 = Mm::new(new_x2);
+                                                new_line.y2 = Mm::new(new_y2);
+                                                self.status_msg = format!("直線全体を移動中 ({}, {}) -> ({}, {})", new_x1, new_y1, new_x2, new_y2);
+                                            }
+                                        }
+
+                                        self.mgr.execute(Command::UpdateElement {
+                                            old: old_elem,
+                                            new: Element::Line(new_line),
+                                        });
+                                        self.last_drag_mm = Some((mouse_x as i32, mouse_y as i32));
+                                    }
+                                } else {
+                                    // Move non-line elements
+                                    for id in self.selected_ids.clone() {
+                                        self.mgr.execute(Command::MoveElement { id, dx, dy });
+                                    }
+                                    self.last_drag_mm = Some((mouse_x as i32, mouse_y as i32));
+                                    self.status_msg = format!("移動: dx={}mm, dy={}mm", dx, dy);
                                 }
-                                self.last_drag_mm = Some((mouse_x_mm, mouse_y_mm));
-                                self.status_msg = format!("移動: dx={}mm, dy={}mm", dx, dy);
                             }
                         } else {
-                            self.last_drag_mm = Some((mouse_x_mm, mouse_y_mm));
+                            self.last_drag_mm = Some((mouse_x as i32, mouse_y as i32));
                         }
                     } else if !ctx.input(|i| i.pointer.primary_down()) {
                         self.last_drag_mm = None;
+                        self.active_line_handle = None;
                     }
                 }
             }
