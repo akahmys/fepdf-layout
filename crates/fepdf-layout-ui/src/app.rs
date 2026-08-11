@@ -41,7 +41,8 @@ impl Default for FepdfLayoutApp {
 }
 
 impl FepdfLayoutApp {
-    pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
+    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        setup_japanese_font(&cc.egui_ctx);
         Self::default()
     }
 
@@ -374,6 +375,41 @@ impl FepdfLayoutApp {
                 new_elements: selected_elems,
             });
             self.status_msg = "整列を実行しました (1mm Grid Snap)".to_string();
+        }
+    }
+}
+
+/// Load system Japanese CJK font into egui FontDefinitions to resolve garbled text.
+fn setup_japanese_font(ctx: &egui::Context) {
+    let mut fonts = egui::FontDefinitions::default();
+
+    let candidate_paths = [
+        "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+        "/System/Library/Fonts/Hiragino Sans GB.ttc",
+        "/System/Library/Fonts/Supplemental/Songti.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+        "C:\\Windows\\Fonts\\msgothic.ttc",
+        "C:\\Windows\\Fonts\\msyh.ttc",
+        "C:\\Windows\\Fonts\\meiryo.ttc",
+    ];
+
+    for path in candidate_paths {
+        if let Ok(font_bytes) = std::fs::read(path) {
+            fonts.font_data.insert(
+                "japanese_font".to_owned(),
+                egui::FontData::from_owned(font_bytes),
+            );
+
+            if let Some(family) = fonts.families.get_mut(&egui::FontFamily::Proportional) {
+                family.insert(0, "japanese_font".to_owned());
+            }
+            if let Some(family) = fonts.families.get_mut(&egui::FontFamily::Monospace) {
+                family.insert(0, "japanese_font".to_owned());
+            }
+            ctx.set_fonts(fonts);
+            tracing::info!("Loaded Japanese font from {}", path);
+            break;
         }
     }
 }
