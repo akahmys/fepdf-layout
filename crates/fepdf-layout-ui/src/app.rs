@@ -231,7 +231,7 @@ impl eframe::App for FepdfLayoutApp {
                     ui.label("1. 右パレットで「─ 直線」を押す");
                     ui.label("2. キャンバス上で【始点】をクリック");
                     ui.label("3. キャンバス上で【終点】をクリックして確定");
-                    ui.label("4. 始点・終点の丸ハンドルをドラッグして個別に調整可能");
+                    ui.label("4. 端点をドラッグするとリアルタイムに座標がホバー表示されます");
                 } else if self.selected_ids.len() == 1 {
                     let id = *self.selected_ids.iter().next().unwrap();
                     if let Some(elem) = self.mgr.doc.get_element(id).cloned() {
@@ -391,6 +391,29 @@ impl eframe::App for FepdfLayoutApp {
                 (x_mm.min(page_spec.layout_width.0), y_mm.min(page_spec.layout_height.0))
             };
 
+            // Helper to draw a dark coordinate hover badge tooltip near screen pos
+            let draw_coord_badge = |painter: &egui::Painter, pos: egui::Pos2, text: &str| {
+                let font = egui::FontId::proportional(11.0);
+                let text_pos = pos + egui::vec2(12.0, -22.0);
+                let text_rect = painter.text(
+                    text_pos,
+                    egui::Align2::LEFT_TOP,
+                    text,
+                    font.clone(),
+                    egui::Color32::WHITE,
+                );
+                let bg_rect = text_rect.expand(4.0);
+                painter.rect_filled(bg_rect, 4.0, egui::Color32::from_black_alpha(220));
+                painter.rect_stroke(bg_rect, 4.0, egui::Stroke::new(1.0_f32, egui::Color32::from_gray(100)));
+                painter.text(
+                    text_pos,
+                    egui::Align2::LEFT_TOP,
+                    text,
+                    font,
+                    egui::Color32::WHITE,
+                );
+            };
+
             // 1. Draw Page Sheet Background
             painter.rect_filled(page_rect, 0.0, egui::Color32::WHITE);
             painter.rect_stroke(page_rect, 0.0, egui::Stroke::new(2.0_f32, egui::Color32::DARK_GRAY));
@@ -399,7 +422,6 @@ impl eframe::App for FepdfLayoutApp {
             let color_1mm = egui::Color32::from_gray(215);
             let color_5mm = egui::Color32::from_gray(195);
 
-            // Vertical Grid Lines
             for gx in 0..=page_spec.layout_width.0 {
                 let p1 = mm_to_screen(gx, 0);
                 let p2 = mm_to_screen(gx, page_spec.layout_height.0);
@@ -408,7 +430,6 @@ impl eframe::App for FepdfLayoutApp {
                 painter.line_segment([p1, p2], egui::Stroke::new(stroke_w, color));
             }
 
-            // Horizontal Grid Lines
             for gy in 0..=page_spec.layout_height.0 {
                 let p1 = mm_to_screen(0, gy);
                 let p2 = mm_to_screen(page_spec.layout_width.0, gy);
@@ -435,7 +456,6 @@ impl eframe::App for FepdfLayoutApp {
                         let stroke_w = (l.stroke_width.0 as f32 * scale).max(1.5);
                         painter.line_segment([p1, p2], egui::Stroke::new(stroke_w, color));
 
-                        // Clean round handle dots when Line is selected (No S/E text labels)
                         if is_selected {
                             painter.circle_filled(p1, 5.0, egui::Color32::BLUE);
                             painter.circle_stroke(p1, 5.0, egui::Stroke::new(1.5_f32, egui::Color32::WHITE));
@@ -523,7 +543,7 @@ impl eframe::App for FepdfLayoutApp {
                 }
             }
 
-            // 4. Live Rubber-Band Line Creation Preview
+            // 4. Live Rubber-Band Line Creation Preview & Hover Coordinates
             if let ToolState::LineWaitEnd { start_x, start_y } = self.tool_state {
                 if let Some(pointer_pos) = ctx.pointer_interact_pos() {
                     if page_rect.contains(pointer_pos) {
@@ -533,16 +553,20 @@ impl eframe::App for FepdfLayoutApp {
                         painter.line_segment([p1, p2], egui::Stroke::new(2.0_f32, egui::Color32::RED));
                         painter.circle_filled(p1, 5.0, egui::Color32::RED);
                         painter.circle_filled(p2, 5.0, egui::Color32::RED);
+
+                        // Draw active coordinate hover badges during creation
+                        draw_coord_badge(&painter, p1, &format!("始点: ({}, {}) mm", start_x, start_y));
+                        draw_coord_badge(&painter, p2, &format!("終点: ({}, {}) mm", curr_x, curr_y));
                     }
                 }
             }
 
-            // 5. Mouse Press & Drag Handling (Triggered IMMEDIATELY on Press Down!)
+            // 5. Mouse Press & Drag Handling with Live Hover Coordinates
             if let Some(pointer_pos) = ctx.pointer_interact_pos() {
                 if page_rect.contains(pointer_pos) {
                     let (mouse_x, mouse_y) = screen_to_mm(pointer_pos);
 
-                    // MOUSE PRESS DOWN EVENT (Triggers on press onset for immediate handle grabbing!)
+                    // MOUSE PRESS DOWN EVENT
                     if ctx.input(|i| i.pointer.primary_pressed()) {
                         match self.tool_state {
                             ToolState::LineWaitStart => {
@@ -580,7 +604,6 @@ impl eframe::App for FepdfLayoutApp {
                                             let p1 = mm_to_screen(l.x1.0, l.y1.0);
                                             let p2 = mm_to_screen(l.x2.0, l.y2.0);
 
-                                            // Check Start / End Handle Proximity (16px pixel radius)
                                             if p1.distance(pointer_pos) <= 16.0 {
                                                 hit_handle = Some((l.id, LineHandleKind::StartPoint));
                                                 hit_id = Some(l.id);
@@ -592,7 +615,6 @@ impl eframe::App for FepdfLayoutApp {
                                                 break;
                                             }
 
-                                            // Check Line Body bounding box
                                             let b = elem.bounds();
                                             let in_x = mouse_x >= b.x.0.saturating_sub(1) && mouse_x <= (b.x.0 + b.width.0 + 1);
                                             let in_y = mouse_y >= b.y.0.saturating_sub(1) && mouse_y <= (b.y.0 + b.height.0 + 1);
@@ -638,7 +660,7 @@ impl eframe::App for FepdfLayoutApp {
                         }
                     }
 
-                    // MOUSE DRAG EVENT (Processes continuous movement during button down)
+                    // MOUSE DRAG EVENT & LIVE HOVER TOOLTIP DISPLAY
                     if ctx.input(|i| i.pointer.primary_down()) && !self.selected_ids.is_empty() {
                         if let Some((last_x, last_y)) = self.last_drag_mm {
                             let dx = (mouse_x as i32) - last_x;
@@ -695,6 +717,26 @@ impl eframe::App for FepdfLayoutApp {
                             }
                         } else {
                             self.last_drag_mm = Some((mouse_x as i32, mouse_y as i32));
+                        }
+
+                        // Display live coordinate tooltip badge while dragging line handles or elements!
+                        if let Some((line_id, handle_kind)) = self.active_line_handle {
+                            if let Some(Element::Line(l)) = self.mgr.doc.get_element(line_id) {
+                                match handle_kind {
+                                    LineHandleKind::StartPoint => {
+                                        let p = mm_to_screen(l.x1.0, l.y1.0);
+                                        draw_coord_badge(&painter, p, &format!("始点: ({}, {}) mm", l.x1.0, l.y1.0));
+                                    }
+                                    LineHandleKind::EndPoint => {
+                                        let p = mm_to_screen(l.x2.0, l.y2.0);
+                                        draw_coord_badge(&painter, p, &format!("終点: ({}, {}) mm", l.x2.0, l.y2.0));
+                                    }
+                                    LineHandleKind::Body => {
+                                        let p1 = mm_to_screen(l.x1.0, l.y1.0);
+                                        draw_coord_badge(&painter, p1, &format!("始点: ({}, {}) mm | 終点: ({}, {}) mm", l.x1.0, l.y1.0, l.x2.0, l.y2.0));
+                                    }
+                                }
+                            }
                         }
                     } else if !ctx.input(|i| i.pointer.primary_down()) {
                         self.last_drag_mm = None;
