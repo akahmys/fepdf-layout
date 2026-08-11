@@ -396,8 +396,8 @@ impl eframe::App for FepdfLayoutApp {
             painter.rect_stroke(page_rect, 0.0, egui::Stroke::new(2.0_f32, egui::Color32::DARK_GRAY));
 
             // 2. Draw Grid Lines (1mm fine lines & 10mm major lines)
-            let color_1mm = egui::Color32::from_gray(240);
-            let color_10mm = egui::Color32::from_gray(200);
+            let color_1mm = egui::Color32::from_gray(215);
+            let color_10mm = egui::Color32::from_gray(160);
 
             // Vertical Grid Lines
             for gx in 0..=page_spec.layout_width.0 {
