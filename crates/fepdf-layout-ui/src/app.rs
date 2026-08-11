@@ -395,16 +395,16 @@ impl eframe::App for FepdfLayoutApp {
             painter.rect_filled(page_rect, 0.0, egui::Color32::WHITE);
             painter.rect_stroke(page_rect, 0.0, egui::Stroke::new(2.0_f32, egui::Color32::DARK_GRAY));
 
-            // 2. Draw Grid Lines (1mm fine lines & 10mm major lines)
+            // 2. Draw Grid Lines (1mm fine lines & 5mm major lines)
             let color_1mm = egui::Color32::from_gray(215);
-            let color_10mm = egui::Color32::from_gray(195);
+            let color_5mm = egui::Color32::from_gray(195);
 
             // Vertical Grid Lines
             for gx in 0..=page_spec.layout_width.0 {
                 let p1 = mm_to_screen(gx, 0);
                 let p2 = mm_to_screen(gx, page_spec.layout_height.0);
-                let color = if gx % 10 == 0 { color_10mm } else { color_1mm };
-                let stroke_w = if gx % 10 == 0 { 0.8_f32 } else { 0.4_f32 };
+                let color = if gx % 5 == 0 { color_5mm } else { color_1mm };
+                let stroke_w = if gx % 5 == 0 { 0.8_f32 } else { 0.4_f32 };
                 painter.line_segment([p1, p2], egui::Stroke::new(stroke_w, color));
             }
 
@@ -412,8 +412,8 @@ impl eframe::App for FepdfLayoutApp {
             for gy in 0..=page_spec.layout_height.0 {
                 let p1 = mm_to_screen(0, gy);
                 let p2 = mm_to_screen(page_spec.layout_width.0, gy);
-                let color = if gy % 10 == 0 { color_10mm } else { color_1mm };
-                let stroke_w = if gy % 10 == 0 { 0.8_f32 } else { 0.4_f32 };
+                let color = if gy % 5 == 0 { color_5mm } else { color_1mm };
+                let stroke_w = if gy % 5 == 0 { 0.8_f32 } else { 0.4_f32 };
                 painter.line_segment([p1, p2], egui::Stroke::new(stroke_w, color));
             }
 
