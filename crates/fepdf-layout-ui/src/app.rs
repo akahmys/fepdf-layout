@@ -19,6 +19,14 @@ pub enum ActiveTool {
     ComboBox,
 }
 
+/// Drag interaction state on the canvas.
+#[derive(Debug, Clone, Copy)]
+pub struct DragState {
+    pub element_id: ElementId,
+    pub start_mouse_mm: (u32, u32),
+    pub start_elem_pos: (u32, u32),
+}
+
 /// Main `egui` application state.
 pub struct FepdfLayoutApp {
     pub mgr: DocumentManager,
@@ -26,7 +34,7 @@ pub struct FepdfLayoutApp {
     pub selected_ids: HashSet<ElementId>,
     pub zoom: f32,
     pub status_msg: String,
-    pub drag_start_pos: Option<egui::Pos2>,
+    pub dragging: Option<DragState>,
 }
 
 impl Default for FepdfLayoutApp {
@@ -36,8 +44,8 @@ impl Default for FepdfLayoutApp {
             active_tool: ActiveTool::Select,
             selected_ids: HashSet::new(),
             zoom: 1.0,
-            status_msg: "Ready (1mm Grid Snap Active)".to_string(),
-            drag_start_pos: None,
+            status_msg: "準備完了 (1mm 格子スナップ有効)".to_string(),
+            dragging: None,
         }
     }
 }
@@ -48,30 +56,27 @@ impl FepdfLayoutApp {
         Self::default()
     }
 
-    /// Add a new element to the center of the active page.
-    pub fn add_element_preset(&mut self, tool: ActiveTool) {
+    /// Place a new element at the specified 1mm grid coordinate (x_mm, y_mm).
+    pub fn place_element_at(&mut self, tool: ActiveTool, x_mm: u32, y_mm: u32) {
         let id = self.mgr.doc.next_id();
-        let center_x = self.mgr.doc.page_spec.layout_width.0 / 2;
-        let center_y = self.mgr.doc.page_spec.layout_height.0 / 2;
-
         let elem = match tool {
             ActiveTool::Line => Element::Line(LineElement {
                 id,
-                x1: Mm::new(center_x.saturating_sub(20)),
-                y1: Mm::new(center_y),
-                x2: Mm::new(center_x + 20),
-                y2: Mm::new(center_y),
+                x1: Mm::new(x_mm),
+                y1: Mm::new(y_mm),
+                x2: Mm::new(x_mm + 40),
+                y2: Mm::new(y_mm),
                 stroke_width: Mm::new(1),
                 stroke_color: Color::BLACK,
                 stroke_style: StrokeStyle::Solid,
             }),
             ActiveTool::TextBox => Element::TextBox(TextBoxElement {
                 id,
-                x: Mm::new(center_x.saturating_sub(30)),
-                y: Mm::new(center_y.saturating_sub(10)),
+                x: Mm::new(x_mm),
+                y: Mm::new(y_mm),
                 width: Mm::new(60),
                 height: Mm::new(20),
-                text: "新規テキスト".to_string(),
+                text: "テキスト".to_string(),
                 font_family: "Sans".to_string(),
                 font_size_pt: 12.0,
                 text_color: Color::BLACK,
@@ -83,8 +88,8 @@ impl FepdfLayoutApp {
                 id,
                 kind: FormFieldKind::TextField,
                 field_tag: format!("field_{}", id.0),
-                x: Mm::new(center_x.saturating_sub(25)),
-                y: Mm::new(center_y.saturating_sub(6)),
+                x: Mm::new(x_mm),
+                y: Mm::new(y_mm),
                 width: Mm::new(50),
                 height: Mm::new(12),
                 border_color: Color::GRAY_LIGHT,
@@ -97,8 +102,8 @@ impl FepdfLayoutApp {
                 id,
                 kind: FormFieldKind::CheckBox,
                 field_tag: format!("check_{}", id.0),
-                x: Mm::new(center_x.saturating_sub(6)),
-                y: Mm::new(center_y.saturating_sub(6)),
+                x: Mm::new(x_mm),
+                y: Mm::new(y_mm),
                 width: Mm::new(12),
                 height: Mm::new(12),
                 border_color: Color::GRAY_LIGHT,
@@ -111,8 +116,8 @@ impl FepdfLayoutApp {
                 id,
                 kind: FormFieldKind::RadioButton,
                 field_tag: format!("radio_{}", id.0),
-                x: Mm::new(center_x.saturating_sub(6)),
-                y: Mm::new(center_y.saturating_sub(6)),
+                x: Mm::new(x_mm),
+                y: Mm::new(y_mm),
                 width: Mm::new(12),
                 height: Mm::new(12),
                 border_color: Color::GRAY_LIGHT,
@@ -125,8 +130,8 @@ impl FepdfLayoutApp {
                 id,
                 kind: FormFieldKind::ComboBox,
                 field_tag: format!("combo_{}", id.0),
-                x: Mm::new(center_x.saturating_sub(25)),
-                y: Mm::new(center_y.saturating_sub(6)),
+                x: Mm::new(x_mm),
+                y: Mm::new(y_mm),
                 width: Mm::new(50),
                 height: Mm::new(12),
                 border_color: Color::GRAY_LIGHT,
@@ -141,13 +146,14 @@ impl FepdfLayoutApp {
         self.mgr.execute(Command::AddElement(elem.clone()));
         self.selected_ids.clear();
         self.selected_ids.insert(elem.id());
-        self.status_msg = format!("パーツ #{} を配置しました", id.0);
+        self.active_tool = ActiveTool::Select;
+        self.status_msg = format!("パーツ #{} を配置・選択しました (X:{}mm, Y:{}mm)", id.0, x_mm, y_mm);
     }
 }
 
 impl eframe::App for FepdfLayoutApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // --- Key Shortcuts (Delete key to delete selected) ---
+        // Delete key handler
         if ctx.input(|i| i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace)) {
             let to_remove: Vec<_> = self.selected_ids.iter().cloned().collect();
             for id in to_remove {
@@ -167,11 +173,11 @@ impl eframe::App for FepdfLayoutApp {
 
                 if ui.button("↩ Undo").clicked() && self.mgr.history.can_undo() {
                     self.mgr.undo();
-                    self.status_msg = "操作を取り消しました (Undo)".to_string();
+                    self.status_msg = "Undo 完了".to_string();
                 }
                 if ui.button("↪ Redo").clicked() && self.mgr.history.can_redo() {
                     self.mgr.redo();
-                    self.status_msg = "操作をやり直しました (Redo)".to_string();
+                    self.status_msg = "Redo 完了".to_string();
                 }
 
                 ui.separator();
@@ -223,13 +229,13 @@ impl eframe::App for FepdfLayoutApp {
                 ui.separator();
 
                 if self.selected_ids.is_empty() {
-                    ui.label("パーツが選択されていません");
-                    ui.label("右のパーツパレットからパーツボタンをクリックすると、キャンバス中央にパーツが配置されます。");
+                    ui.label("選択なし");
                     ui.separator();
-                    ui.label("【操作方法】");
-                    ui.label("• パレットボタン押下 ➔ パーツ配置");
-                    ui.label("• キャンバス上のパーツ押下 ➔ 選択");
-                    ui.label("• 選択中に Delete キー ➔ 削除");
+                    ui.label("【使い方】");
+                    ui.label("1. 右パレットから配置したいパーツツールを選択");
+                    ui.label("2. 中央キャンバスの好きな位置をクリックして配置");
+                    ui.label("3. 配置済みパーツをクリックして選択・ドラッグ移動");
+                    ui.label("4. 選択中に Delete キーで削除");
                 } else if self.selected_ids.len() == 1 {
                     let id = *self.selected_ids.iter().next().unwrap();
                     if let Some(elem) = self.mgr.doc.get_element(id).cloned() {
@@ -250,7 +256,7 @@ impl eframe::App for FepdfLayoutApp {
                                     });
                                 }
                                 ui.horizontal(|ui| {
-                                    ui.label("揃え:");
+                                    ui.label("文字揃え:");
                                     ui.selectable_value(&mut tb.align, TextAlign::Left, "左");
                                     ui.selectable_value(&mut tb.align, TextAlign::Center, "中央");
                                     ui.selectable_value(&mut tb.align, TextAlign::Right, "右");
@@ -315,27 +321,30 @@ impl eframe::App for FepdfLayoutApp {
                 ui.heading("パーツパレット");
                 ui.separator();
 
+                ui.selectable_value(&mut self.active_tool, ActiveTool::Select, "↖ 選択・移動モード");
+                ui.separator();
+
                 ui.label("■ 描画パーツ");
-                if ui.button("─ 直線 (Line)").clicked() {
-                    self.add_element_preset(ActiveTool::Line);
+                if ui.selectable_value(&mut self.active_tool, ActiveTool::Line, "─ 直線 (Line)").clicked() {
+                    self.status_msg = "キャンバス上をクリックして【直線】を配置してください".to_string();
                 }
-                if ui.button("T テキストボックス").clicked() {
-                    self.add_element_preset(ActiveTool::TextBox);
+                if ui.selectable_value(&mut self.active_tool, ActiveTool::TextBox, "T テキストボックス").clicked() {
+                    self.status_msg = "キャンバス上をクリックして【テキストボックス】を配置してください".to_string();
                 }
 
                 ui.separator();
                 ui.label("■ PDF フォームパーツ");
-                if ui.button("[ab] テキスト枠").clicked() {
-                    self.add_element_preset(ActiveTool::TextField);
+                if ui.selectable_value(&mut self.active_tool, ActiveTool::TextField, "[ab] テキスト枠").clicked() {
+                    self.status_msg = "キャンバス上をクリックして【テキスト枠】を配置してください".to_string();
                 }
-                if ui.button("[☑] チェックボックス").clicked() {
-                    self.add_element_preset(ActiveTool::CheckBox);
+                if ui.selectable_value(&mut self.active_tool, ActiveTool::CheckBox, "[☑] チェックボックス").clicked() {
+                    self.status_msg = "キャンバス上をクリックして【チェックボックス】を配置してください".to_string();
                 }
-                if ui.button("[○] ラジオボタン").clicked() {
-                    self.add_element_preset(ActiveTool::RadioButton);
+                if ui.selectable_value(&mut self.active_tool, ActiveTool::RadioButton, "[○] ラジオボタン").clicked() {
+                    self.status_msg = "キャンバス上をクリックして【ラジオボタン】を配置してください".to_string();
                 }
-                if ui.button("[▼] ドロップダウン").clicked() {
-                    self.add_element_preset(ActiveTool::ComboBox);
+                if ui.selectable_value(&mut self.active_tool, ActiveTool::ComboBox, "[▼] ドロップダウン").clicked() {
+                    self.status_msg = "キャンバス上をクリックして【ドロップダウン】を配置してください".to_string();
                 }
             });
 
@@ -344,21 +353,10 @@ impl eframe::App for FepdfLayoutApp {
             ui.heading("作業スペース (1mm Grid Canvas / 左下原点)");
 
             let page_spec = self.mgr.doc.page_spec;
-            ui.label(format!(
-                "用紙サイズ: {} x {} mm (アクティブ領域: {} x {} mm, 原点オフセット: {:.2}, {:.2} mm)",
-                page_spec.paper_width.0,
-                page_spec.paper_height.0,
-                page_spec.layout_width.0,
-                page_spec.layout_height.0,
-                page_spec.offset_x.0,
-                page_spec.offset_y.0
-            ));
-
             let scale = 2.0_f32 * self.zoom; // 1mm = 2.0 * zoom pixels
             let page_w_px = (page_spec.layout_width.0 as f32) * scale;
             let page_h_px = (page_spec.layout_height.0 as f32) * scale;
 
-            // Allocate painter for canvas
             let (response, painter) = ui.allocate_painter(
                 egui::vec2(page_w_px + 40.0, page_h_px + 40.0),
                 egui::Sense::click_and_drag(),
@@ -375,6 +373,15 @@ impl eframe::App for FepdfLayoutApp {
                 egui::pos2(px, py)
             };
 
+            // Screen position to 1mm integer grid coordinates (x_mm, y_mm)
+            let screen_to_mm = |pos: egui::Pos2| -> (u32, u32) {
+                let rel_x = pos.x - page_rect.min.x;
+                let rel_y = page_rect.max.y - pos.y;
+                let x_mm = (rel_x / scale).round().max(0.0) as u32;
+                let y_mm = (rel_y / scale).round().max(0.0) as u32;
+                (x_mm.min(page_spec.layout_width.0), y_mm.min(page_spec.layout_height.0))
+            };
+
             // 1. Draw Page Sheet Background
             painter.rect_filled(page_rect, 0.0, egui::Color32::WHITE);
             painter.rect_stroke(page_rect, 0.0, egui::Stroke::new(2.0_f32, egui::Color32::DARK_GRAY));
@@ -384,12 +391,12 @@ impl eframe::App for FepdfLayoutApp {
             for gx in (0..=page_spec.layout_width.0).step_by(grid_step_mm) {
                 let p1 = mm_to_screen(gx, 0);
                 let p2 = mm_to_screen(gx, page_spec.layout_height.0);
-                painter.line_segment([p1, p2], egui::Stroke::new(0.5_f32, egui::Color32::from_gray(220)));
+                painter.line_segment([p1, p2], egui::Stroke::new(0.5_f32, egui::Color32::from_gray(230)));
             }
             for gy in (0..=page_spec.layout_height.0).step_by(grid_step_mm) {
                 let p1 = mm_to_screen(0, gy);
                 let p2 = mm_to_screen(page_spec.layout_width.0, gy);
-                painter.line_segment([p1, p2], egui::Stroke::new(0.5_f32, egui::Color32::from_gray(220)));
+                painter.line_segment([p1, p2], egui::Stroke::new(0.5_f32, egui::Color32::from_gray(230)));
             }
 
             // 3. Render All Document Elements
@@ -399,14 +406,15 @@ impl eframe::App for FepdfLayoutApp {
                 let bounds = elem.bounds();
                 let is_selected = self.selected_ids.contains(&elem.id());
 
-                let p_bl = mm_to_screen(bounds.x.0, bounds.y.0);
-                let p_tr = mm_to_screen(bounds.x.0 + bounds.width.0, bounds.y.0 + bounds.height.0);
-                let elem_rect = egui::Rect::from_two_pos(p_bl, p_tr);
+                // Correct rect calculation for screen Y inversion:
+                let p_left_top = mm_to_screen(bounds.x.0, bounds.y.0 + bounds.height.0);
+                let p_right_bottom = mm_to_screen(bounds.x.0 + bounds.width.0, bounds.y.0);
+                let elem_rect = egui::Rect::from_two_pos(p_left_top, p_right_bottom);
 
-                // Check click selection
+                // Click detection
                 if response.clicked() {
-                    if let Some(mouse_pos) = response.interact_pointer_pos() {
-                        if elem_rect.contains(mouse_pos) {
+                    if let Some(pointer_pos) = response.interact_pointer_pos() {
+                        if elem_rect.contains(pointer_pos) {
                             clicked_element_id = Some(elem.id());
                         }
                     }
@@ -479,7 +487,7 @@ impl eframe::App for FepdfLayoutApp {
                     }
                 }
 
-                // Draw selection highlight box
+                // Selection Outline
                 if is_selected {
                     painter.rect_stroke(
                         elem_rect.expand(2.0),
@@ -489,14 +497,22 @@ impl eframe::App for FepdfLayoutApp {
                 }
             }
 
-            // Handle element click selection update
+            // 4. Handle Canvas Interactions (Place on click OR Select element)
             if response.clicked() {
-                if let Some(id) = clicked_element_id {
-                    self.selected_ids.clear();
-                    self.selected_ids.insert(id);
-                    self.status_msg = format!("パーツ #{} を選択しました", id.0);
-                } else {
-                    self.selected_ids.clear();
+                if let Some(pos) = response.interact_pointer_pos() {
+                    let (x_mm, y_mm) = screen_to_mm(pos);
+                    if self.active_tool != ActiveTool::Select {
+                        // Place selected tool at clicked 1mm grid position
+                        self.place_element_at(self.active_tool, x_mm, y_mm);
+                    } else if let Some(id) = clicked_element_id {
+                        // Select clicked element
+                        self.selected_ids.clear();
+                        self.selected_ids.insert(id);
+                        self.status_msg = format!("パーツ #{} を選択しました", id.0);
+                    } else {
+                        // Deselect on empty canvas click
+                        self.selected_ids.clear();
+                    }
                 }
             }
         });
