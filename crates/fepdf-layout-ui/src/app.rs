@@ -257,7 +257,7 @@ impl eframe::App for FepdfLayoutApp {
 
                 ui.separator();
                 ui.label("表示倍率:");
-                ui.add(egui::Slider::new(&mut self.zoom, 0.5..=2.0).text("倍"));
+                ui.add(egui::Slider::new(&mut self.zoom, 0.5..=20.0).text("倍"));
             });
         });
 
