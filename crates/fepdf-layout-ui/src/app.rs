@@ -2,8 +2,8 @@
 
 use eframe::egui;
 use fepdf_layout_core::{
-    align_elements, Color, Command, DocumentManager, Element, ElementId, FormFieldElement,
-    FormFieldKind, LineElement, Mm, PagePreset, StrokeStyle, TextAlign, TextBoxElement,
+    align_elements, Color, Command, Document, DocumentManager, Element, ElementId, FormFieldElement,
+    FormFieldKind, LineElement, Mm, PagePreset, PdfExporter, StrokeStyle, TextAlign, TextBoxElement,
 };
 use std::collections::HashSet;
 
@@ -165,6 +165,61 @@ impl eframe::App for FepdfLayoutApp {
         egui::TopBottomPanel::top("header_toolbar").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.heading("fepdf-layout (帳票エディタ)");
+                ui.separator();
+
+                if ui.button("📂 開く").clicked() {
+                    if let Some(path) = rfd::FileDialog::new()
+                        .add_filter("fepdf layout project", &["fepdf-layout", "json"])
+                        .pick_file()
+                    {
+                        match Document::load_json(&path) {
+                            Ok(doc) => {
+                                self.mgr.doc = doc;
+                                self.mgr.history = fepdf_layout_core::CommandHistory::new();
+                                self.selected_ids.clear();
+                                self.status_msg = format!("プロジェクトを読み込みました: {}", path.display());
+                            }
+                            Err(e) => {
+                                self.status_msg = format!("読み込み失敗: {}", e);
+                            }
+                        }
+                    }
+                }
+
+                if ui.button("💾 保存").clicked() {
+                    if let Some(path) = rfd::FileDialog::new()
+                        .add_filter("fepdf layout project", &["fepdf-layout", "json"])
+                        .set_file_name("layout_project.fepdf-layout")
+                        .save_file()
+                    {
+                        match self.mgr.doc.save_json(&path) {
+                            Ok(_) => {
+                                self.status_msg = format!("プロジェクトを保存しました: {}", path.display());
+                            }
+                            Err(e) => {
+                                self.status_msg = format!("保存失敗: {}", e);
+                            }
+                        }
+                    }
+                }
+
+                if ui.button("📄 PDF出力").clicked() {
+                    if let Some(path) = rfd::FileDialog::new()
+                        .add_filter("PDF Document", &["pdf"])
+                        .set_file_name("form_document.pdf")
+                        .save_file()
+                    {
+                        match PdfExporter::export_to_file(&self.mgr.doc, &path) {
+                            Ok(_) => {
+                                self.status_msg = format!("PDFを出力しました: {}", path.display());
+                            }
+                            Err(e) => {
+                                self.status_msg = format!("PDF出力失敗: {}", e);
+                            }
+                        }
+                    }
+                }
+
                 ui.separator();
 
                 if ui.button("↩ Undo").clicked() && self.mgr.history.can_undo() {

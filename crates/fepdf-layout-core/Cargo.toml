@@ -7,7 +7,8 @@ license.workspace = true
 
 [dependencies]
 thiserror.workspace = true
-serde.workspace = true
+serde = { workspace = true }
+serde_json = "1.0"
 tracing.workspace = true
 fepdf-core.workspace = true
 fepdf-sdk.workspace = true

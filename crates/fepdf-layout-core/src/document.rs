@@ -118,6 +118,18 @@ impl Document {
             }
         }
     }
+
+    /// Save document to a JSON file.
+    pub fn save_json(&self, path: impl AsRef<std::path::Path>) -> Result<(), String> {
+        let json_str = serde_json::to_string_pretty(self).map_err(|e| e.to_string())?;
+        std::fs::write(path, json_str).map_err(|e| e.to_string())
+    }
+
+    /// Load document from a JSON file.
+    pub fn load_json(path: impl AsRef<std::path::Path>) -> Result<Self, String> {
+        let json_str = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+        serde_json::from_str(&json_str).map_err(|e| e.to_string())
+    }
 }
 
 /// Document Manager wrapping the `Document` and `CommandHistory` for full Undo/Redo support.
@@ -193,5 +205,34 @@ mod tests {
 
         assert!(mgr.redo());
         assert_eq!(mgr.doc.elements.len(), 1);
+    }
+
+    #[test]
+    fn test_document_json_serialization() {
+        let mut doc = Document::new(PagePreset::A4);
+        let id = doc.next_id();
+        doc.elements.push(Element::Line(LineElement {
+            id,
+            x1: Mm::new(10),
+            y1: Mm::new(20),
+            x2: Mm::new(100),
+            y2: Mm::new(20),
+            stroke_width: Mm::new(2),
+            stroke_color: Color::BLACK,
+            stroke_style: StrokeStyle::Solid,
+        }));
+
+        let temp_dir = std::env::temp_dir();
+        let temp_file = temp_dir.join("test_doc.fepdf-layout");
+
+        assert!(doc.save_json(&temp_file).is_ok());
+        let loaded = Document::load_json(&temp_file);
+        assert!(loaded.is_ok());
+
+        let loaded_doc = loaded.unwrap();
+        assert_eq!(loaded_doc.page_spec, doc.page_spec);
+        assert_eq!(loaded_doc.elements.len(), 1);
+
+        let _ = std::fs::remove_file(&temp_file);
     }
 }

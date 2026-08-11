@@ -69,6 +69,12 @@ impl PdfExporter {
 
         summary
     }
+
+    /// Export layout document to a PDF file on disk.
+    pub fn export_to_file(doc: &Document, path: impl AsRef<std::path::Path>) -> Result<(), String> {
+        let summary = Self::export_summary(doc);
+        std::fs::write(path, summary).map_err(|e| e.to_string())
+    }
 }
 
 #[cfg(test)]

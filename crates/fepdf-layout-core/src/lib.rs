@@ -16,6 +16,7 @@ pub use element::{
     Color, Element, ElementId, FormFieldElement, FormFieldKind, LineElement, RectMm, StrokeStyle,
     TextAlign, TextBoxElement,
 };
+pub use export::PdfExporter;
 pub use history::CommandHistory;
 pub use page::{PagePreset, PageSpec};
 pub use units::{Mm, MmF64, MM_PER_INCH, POINTS_PER_INCH};
