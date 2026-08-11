@@ -13,7 +13,7 @@ pub struct FepdfLayoutApp {
     pub selected_ids: HashSet<ElementId>,
     pub zoom: f32,
     pub status_msg: String,
-    pub accumulated_drag_px: egui::Vec2,
+    pub last_drag_mm: Option<(i32, i32)>,
 }
 
 impl Default for FepdfLayoutApp {
@@ -23,7 +23,7 @@ impl Default for FepdfLayoutApp {
             selected_ids: HashSet::new(),
             zoom: 1.0,
             status_msg: "準備完了 (1mm 格子スナップ有効)".to_string(),
-            accumulated_drag_px: egui::Vec2::ZERO,
+            last_drag_mm: None,
         }
     }
 }
@@ -34,27 +34,31 @@ impl FepdfLayoutApp {
         Self::default()
     }
 
-    /// Add a new element immediately to the page center and select it.
+    /// Add a new element to the active page with staggered offset to prevent overlapping.
     pub fn add_element_preset(&mut self, kind_str: &str) {
         let id = self.mgr.doc.next_id();
-        let center_x = self.mgr.doc.page_spec.layout_width.0 / 2;
-        let center_y = self.mgr.doc.page_spec.layout_height.0 / 2;
+        
+        // Stagger placement position by 10mm for each element to prevent stacking
+        let count = self.mgr.doc.elements.len() as u32;
+        let offset = (count * 10) % 100;
+        let base_x = 20 + offset;
+        let base_y = 30 + offset;
 
         let elem = match kind_str {
             "line" => Element::Line(LineElement {
                 id,
-                x1: Mm::new(center_x.saturating_sub(20)),
-                y1: Mm::new(center_y),
-                x2: Mm::new(center_x + 20),
-                y2: Mm::new(center_y),
+                x1: Mm::new(base_x),
+                y1: Mm::new(base_y + 10),
+                x2: Mm::new(base_x + 50),
+                y2: Mm::new(base_y + 10),
                 stroke_width: Mm::new(1),
                 stroke_color: Color::BLACK,
                 stroke_style: StrokeStyle::Solid,
             }),
             "textbox" => Element::TextBox(TextBoxElement {
                 id,
-                x: Mm::new(center_x.saturating_sub(30)),
-                y: Mm::new(center_y.saturating_sub(10)),
+                x: Mm::new(base_x),
+                y: Mm::new(base_y),
                 width: Mm::new(60),
                 height: Mm::new(20),
                 text: "テキスト".to_string(),
@@ -69,8 +73,8 @@ impl FepdfLayoutApp {
                 id,
                 kind: FormFieldKind::TextField,
                 field_tag: format!("field_{}", id.0),
-                x: Mm::new(center_x.saturating_sub(25)),
-                y: Mm::new(center_y.saturating_sub(6)),
+                x: Mm::new(base_x),
+                y: Mm::new(base_y),
                 width: Mm::new(50),
                 height: Mm::new(12),
                 border_color: Color::GRAY_LIGHT,
@@ -83,8 +87,8 @@ impl FepdfLayoutApp {
                 id,
                 kind: FormFieldKind::CheckBox,
                 field_tag: format!("check_{}", id.0),
-                x: Mm::new(center_x.saturating_sub(6)),
-                y: Mm::new(center_y.saturating_sub(6)),
+                x: Mm::new(base_x),
+                y: Mm::new(base_y),
                 width: Mm::new(12),
                 height: Mm::new(12),
                 border_color: Color::GRAY_LIGHT,
@@ -97,8 +101,8 @@ impl FepdfLayoutApp {
                 id,
                 kind: FormFieldKind::RadioButton,
                 field_tag: format!("radio_{}", id.0),
-                x: Mm::new(center_x.saturating_sub(6)),
-                y: Mm::new(center_y.saturating_sub(6)),
+                x: Mm::new(base_x),
+                y: Mm::new(base_y),
                 width: Mm::new(12),
                 height: Mm::new(12),
                 border_color: Color::GRAY_LIGHT,
@@ -111,8 +115,8 @@ impl FepdfLayoutApp {
                 id,
                 kind: FormFieldKind::ComboBox,
                 field_tag: format!("combo_{}", id.0),
-                x: Mm::new(center_x.saturating_sub(25)),
-                y: Mm::new(center_y.saturating_sub(6)),
+                x: Mm::new(base_x),
+                y: Mm::new(base_y),
                 width: Mm::new(50),
                 height: Mm::new(12),
                 border_color: Color::GRAY_LIGHT,
@@ -127,13 +131,13 @@ impl FepdfLayoutApp {
         self.mgr.execute(Command::AddElement(elem.clone()));
         self.selected_ids.clear();
         self.selected_ids.insert(elem.id());
-        self.status_msg = format!("パーツ #{} を追加・選択しました", id.0);
+        self.status_msg = format!("パーツ #{} を追加・選択しました (X:{}mm, Y:{}mm)", id.0, base_x, base_y);
     }
 }
 
 impl eframe::App for FepdfLayoutApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // --- Keyboard Delete Handler ---
+        // Keyboard Delete Handler
         if ctx.input(|i| i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace)) {
             let to_remove: Vec<_> = self.selected_ids.iter().cloned().collect();
             for id in to_remove {
@@ -209,13 +213,13 @@ impl eframe::App for FepdfLayoutApp {
                 ui.separator();
 
                 if self.selected_ids.is_empty() {
-                    ui.label("パーツが選択されていません");
+                    ui.label("パーツ未選択");
                     ui.separator();
                     ui.label("【操作方法】");
-                    ui.label("1. 右パレットのボタンを押してパーツを追加");
+                    ui.label("1. 右パレットのボタンを押してパーツ追加");
                     ui.label("2. キャンバス上のパーツをクリックして選択");
                     ui.label("3. パーツをドラッグして移動 (1mm スナップ)");
-                    ui.label("4. 選択中に Delete キーで削除");
+                    ui.label("4. Delete キーで選択パーツ削除");
                 } else if self.selected_ids.len() == 1 {
                     let id = *self.selected_ids.iter().next().unwrap();
                     if let Some(elem) = self.mgr.doc.get_element(id).cloned() {
@@ -334,19 +338,26 @@ impl eframe::App for FepdfLayoutApp {
             let page_w_px = (page_spec.layout_width.0 as f32) * scale;
             let page_h_px = (page_spec.layout_height.0 as f32) * scale;
 
+            // Allocate non-blocking painter
             let (response, painter) = ui.allocate_painter(
                 egui::vec2(page_w_px + 40.0, page_h_px + 40.0),
-                egui::Sense::click_and_drag(),
+                egui::Sense::hover(),
             );
 
             let canvas_origin = response.rect.min + egui::vec2(20.0, 20.0);
             let page_rect = egui::Rect::from_min_size(canvas_origin, egui::vec2(page_w_px, page_h_px));
 
-            // Bottom-Left origin helper
+            // Bottom-Left origin coordinate converters
             let mm_to_screen = |x_mm: u32, y_mm: u32| -> egui::Pos2 {
                 let px = page_rect.min.x + (x_mm as f32) * scale;
-                let py = page_rect.max.y - (y_mm as f32) * scale; // Y goes UP from bottom!
+                let py = page_rect.max.y - (y_mm as f32) * scale;
                 egui::pos2(px, py)
+            };
+
+            let screen_to_mm = |pos: egui::Pos2| -> (i32, i32) {
+                let x_mm = ((pos.x - page_rect.min.x) / scale).round() as i32;
+                let y_mm = ((page_rect.max.y - pos.y) / scale).round() as i32;
+                (x_mm, y_mm)
             };
 
             // 1. Draw Page Sheet Background
@@ -366,59 +377,15 @@ impl eframe::App for FepdfLayoutApp {
                 painter.line_segment([p1, p2], egui::Stroke::new(0.5_f32, egui::Color32::from_gray(230)));
             }
 
-            // Deselect when clicking empty background
-            if response.clicked() {
-                self.selected_ids.clear();
-            }
-
-            // 3. Render and Interact with All Document Elements
-            let mut element_drag_shift: Option<(ElementId, i32, i32)> = None;
-
+            // 3. Render All Document Elements
             for elem in &self.mgr.doc.elements {
                 let bounds = elem.bounds();
                 let is_selected = self.selected_ids.contains(&elem.id());
 
-                // Calculate screen rectangle for bottom-left origin
                 let p_left_top = mm_to_screen(bounds.x.0, bounds.y.0 + bounds.height.0);
                 let p_right_bottom = mm_to_screen(bounds.x.0 + bounds.width.0, bounds.y.0);
                 let elem_rect = egui::Rect::from_two_pos(p_left_top, p_right_bottom);
 
-                // Create interactive widget region for each element
-                let elem_id = ui.make_persistent_id(format!("elem_{}", elem.id().0));
-                let elem_resp = ui.interact(elem_rect, elem_id, egui::Sense::click_and_drag());
-
-                // Click to Select
-                if elem_resp.clicked() {
-                    self.selected_ids.clear();
-                    self.selected_ids.insert(elem.id());
-                    self.status_msg = format!("パーツ #{} を選択しました", elem.id().0);
-                }
-
-                // Drag to Move (1mm grid snap)
-                if elem_resp.dragged() {
-                    if !is_selected {
-                        self.selected_ids.clear();
-                        self.selected_ids.insert(elem.id());
-                    }
-
-                    let delta = elem_resp.drag_delta();
-                    self.accumulated_drag_px += delta;
-
-                    let dx_mm = (self.accumulated_drag_px.x / scale).round() as i32;
-                    let dy_mm = (-self.accumulated_drag_px.y / scale).round() as i32; // Invert screen Y to Bottom-Left Y
-
-                    if dx_mm != 0 || dy_mm != 0 {
-                        element_drag_shift = Some((elem.id(), dx_mm, dy_mm));
-                        self.accumulated_drag_px.x -= (dx_mm as f32) * scale;
-                        self.accumulated_drag_px.y += (dy_mm as f32) * scale;
-                    }
-                }
-
-                if elem_resp.drag_stopped() {
-                    self.accumulated_drag_px = egui::Vec2::ZERO;
-                }
-
-                // Render Element
                 match elem {
                     Element::Line(l) => {
                         let p1 = mm_to_screen(l.x1.0, l.y1.0);
@@ -496,10 +463,55 @@ impl eframe::App for FepdfLayoutApp {
                 }
             }
 
-            // Apply drag move command
-            if let Some((id, dx, dy)) = element_drag_shift {
-                self.mgr.execute(Command::MoveElement { id, dx, dy });
-                self.status_msg = format!("パーツ #{} を移動しました (dx:{}mm, dy:{}mm)", id.0, dx, dy);
+            // 4. Robust Direct Mouse Hit-Testing & 1mm Snap Dragging
+            if let Some(pointer_pos) = ctx.pointer_interact_pos() {
+                if page_rect.contains(pointer_pos) {
+                    let (mouse_x_mm, mouse_y_mm) = screen_to_mm(pointer_pos);
+
+                    // Primary Click -> Hit Test Elements in Reverse (Topmost first)
+                    if ctx.input(|i| i.pointer.primary_clicked()) {
+                        let mut hit_id = None;
+                        for elem in self.mgr.doc.elements.iter().rev() {
+                            let b = elem.bounds();
+                            let in_x = (mouse_x_mm >= b.x.0 as i32) && (mouse_x_mm <= (b.x.0 + b.width.0) as i32);
+                            let in_y = (mouse_y_mm >= b.y.0 as i32) && (mouse_y_mm <= (b.y.0 + b.height.0) as i32);
+                            if in_x && in_y {
+                                hit_id = Some(elem.id());
+                                break;
+                            }
+                        }
+
+                        if let Some(id) = hit_id {
+                            self.selected_ids.clear();
+                            self.selected_ids.insert(id);
+                            self.last_drag_mm = Some((mouse_x_mm, mouse_y_mm));
+                            self.status_msg = format!("パーツ #{} を選択しました", id.0);
+                        } else {
+                            self.selected_ids.clear();
+                            self.last_drag_mm = None;
+                        }
+                    }
+
+                    // Primary Drag -> Move Selected Elements in 1mm Integer Increments
+                    if ctx.input(|i| i.pointer.primary_down()) && !self.selected_ids.is_empty() {
+                        if let Some((last_x, last_y)) = self.last_drag_mm {
+                            let dx = mouse_x_mm - last_x;
+                            let dy = mouse_y_mm - last_y;
+
+                            if dx != 0 || dy != 0 {
+                                for id in self.selected_ids.clone() {
+                                    self.mgr.execute(Command::MoveElement { id, dx, dy });
+                                }
+                                self.last_drag_mm = Some((mouse_x_mm, mouse_y_mm));
+                                self.status_msg = format!("移動: dx={}mm, dy={}mm", dx, dy);
+                            }
+                        } else {
+                            self.last_drag_mm = Some((mouse_x_mm, mouse_y_mm));
+                        }
+                    } else if !ctx.input(|i| i.pointer.primary_down()) {
+                        self.last_drag_mm = None;
+                    }
+                }
             }
         });
     }
