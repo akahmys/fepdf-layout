@@ -5,6 +5,18 @@ use fepdf_layout_core::{Color, Command, Element, LineCap, LineElement, Mm, Strok
 use crate::app::{FepdfLayoutApp, LineHandleKind, ToolState};
 
 pub fn render_workspace_canvas(app: &mut FepdfLayoutApp, ctx: &egui::Context) {
+    // Mouse wheel & 2-finger trackpad pinch-to-zoom handler
+    let zoom_delta = ctx.input(|i| i.zoom_delta());
+    if (zoom_delta - 1.0).abs() > 0.001 {
+        app.zoom = (app.zoom * zoom_delta).clamp(0.5, 20.0);
+    }
+
+    let scroll_y = ctx.input(|i| i.smooth_scroll_delta.y);
+    if ctx.input(|i| i.modifiers.ctrl || i.modifiers.command || i.modifiers.mac_cmd) && scroll_y.abs() > 0.1 {
+        let factor = if scroll_y > 0.0 { 1.05 } else { 0.95 };
+        app.zoom = (app.zoom * factor).clamp(0.5, 20.0);
+    }
+
     egui::CentralPanel::default().show(ctx, |ui| {
         egui::ScrollArea::both()
             .auto_shrink([false, false])
