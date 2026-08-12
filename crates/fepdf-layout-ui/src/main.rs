@@ -1,6 +1,10 @@
 //! `fepdf-layout-ui`: Native GUI desktop entry point for fepdf-layout.
 
 pub mod app;
+pub mod canvas;
+pub mod inspector;
+pub mod palette;
+pub mod toolbar;
 
 use app::FepdfLayoutApp;
 
