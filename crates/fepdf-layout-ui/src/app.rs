@@ -431,13 +431,28 @@ impl eframe::App for FepdfLayoutApp {
                     let page_w_px = (page_spec.layout_width.0 as f32) * scale;
                     let page_h_px = (page_spec.layout_height.0 as f32) * scale;
 
-            let (response, painter) = ui.allocate_painter(
-                egui::vec2(page_w_px + 40.0, page_h_px + 40.0),
-                egui::Sense::hover(),
-            );
+                    let avail_size = ui.available_size();
+                    let margin_x = if page_w_px + 40.0 < avail_size.x {
+                        ((avail_size.x - page_w_px) / 2.0).max(20.0)
+                    } else {
+                        20.0
+                    };
+                    let margin_y = if page_h_px + 40.0 < avail_size.y {
+                        ((avail_size.y - page_h_px) / 2.0).max(20.0)
+                    } else {
+                        20.0
+                    };
 
-            let canvas_origin = response.rect.min + egui::vec2(20.0, 20.0);
-            let page_rect = egui::Rect::from_min_size(canvas_origin, egui::vec2(page_w_px, page_h_px));
+                    let content_w = (page_w_px + margin_x * 2.0).max(avail_size.x);
+                    let content_h = (page_h_px + margin_y * 2.0).max(avail_size.y);
+
+                    let (response, painter) = ui.allocate_painter(
+                        egui::vec2(content_w, content_h),
+                        egui::Sense::hover(),
+                    );
+
+                    let canvas_origin = response.rect.min + egui::vec2(margin_x, margin_y);
+                    let page_rect = egui::Rect::from_min_size(canvas_origin, egui::vec2(page_w_px, page_h_px));
 
             // Bottom-Left origin coordinate converters
             let mm_to_screen = |x_mm: u32, y_mm: u32| -> egui::Pos2 {
