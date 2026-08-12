@@ -6,8 +6,10 @@ use crate::app::{FepdfLayoutApp, ToolState};
 pub fn render_parts_palette(app: &mut FepdfLayoutApp, ctx: &egui::Context) {
     egui::SidePanel::right("right_palette")
         .resizable(true)
-        .default_width(200.0)
+        .default_width(180.0)
+        .width_range(120.0..=400.0)
         .show(ctx, |ui| {
+            ui.set_max_width(ui.available_width());
             let is_line_active = matches!(app.tool_state, ToolState::LineWaitStart | ToolState::LineWaitEnd { .. });
             if ui.selectable_label(is_line_active, "直線").clicked() {
                 app.tool_state = ToolState::LineWaitStart;

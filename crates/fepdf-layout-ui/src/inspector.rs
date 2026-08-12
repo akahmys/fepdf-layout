@@ -8,7 +8,9 @@ pub fn render_property_inspector(app: &mut FepdfLayoutApp, ctx: &egui::Context) 
     egui::SidePanel::left("left_inspector")
         .resizable(true)
         .default_width(260.0)
+        .width_range(160.0..=500.0)
         .show(ctx, |ui| {
+            ui.set_max_width(ui.available_width());
             if app.selected_ids.is_empty() {
                 ui.label("パーツ未選択");
             } else if app.selected_ids.len() == 1 {
