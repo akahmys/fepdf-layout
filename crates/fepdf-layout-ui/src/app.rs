@@ -149,7 +149,14 @@ impl FepdfLayoutApp {
 
 impl eframe::App for FepdfLayoutApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Keyboard Delete Handler
+        // Keyboard Handlers (Escape to cancel creation, Delete/Backspace to remove selected)
+        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            if self.tool_state != ToolState::Select {
+                self.tool_state = ToolState::Select;
+                self.status_msg = "パーツ作成をキャンセルしました".to_string();
+            }
+        }
+
         if ctx.input(|i| i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace)) {
             let to_remove: Vec<_> = self.selected_ids.iter().cloned().collect();
             for id in to_remove {
