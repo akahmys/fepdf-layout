@@ -1,6 +1,6 @@
 //! Layout elements (Line, TextBox, FormField) and their properties.
 
-use crate::units::Mm;
+use crate::units::{Mm, MmF64};
 use serde::{Deserialize, Serialize};
 
 /// Unique identifier for a layout element.
@@ -66,7 +66,7 @@ pub struct LineElement {
     pub y1: Mm,
     pub x2: Mm,
     pub y2: Mm,
-    pub stroke_width: Mm,
+    pub stroke_width: MmF64,
     pub stroke_color: Color,
     pub stroke_style: StrokeStyle,
     pub line_cap: LineCap,

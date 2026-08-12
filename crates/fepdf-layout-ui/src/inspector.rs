@@ -1,7 +1,7 @@
 //! Left Property Inspector UI for fepdf-layout.
 
 use eframe::egui;
-use fepdf_layout_core::{Command, Element, LineCap, Mm, TextAlign};
+use fepdf_layout_core::{Command, Element, LineCap, MmF64, TextAlign};
 use crate::app::FepdfLayoutApp;
 
 pub fn render_property_inspector(app: &mut FepdfLayoutApp, ctx: &egui::Context) {
@@ -36,9 +36,9 @@ pub fn render_property_inspector(app: &mut FepdfLayoutApp, ctx: &egui::Context) 
                             let mut stroke_w = l.stroke_width.0;
                             if ui.horizontal_wrapped(|ui| {
                                 ui.label("線の太さ:");
-                                ui.add(egui::DragValue::new(&mut stroke_w).range(1..=20).suffix(" mm")).changed()
+                                ui.add(egui::DragValue::new(&mut stroke_w).range(0.1..=20.0).speed(0.1).fixed_decimals(1).suffix(" mm")).changed()
                             }).inner {
-                                l.stroke_width = Mm::new(stroke_w);
+                                l.stroke_width = MmF64::new(stroke_w);
                                 app.mgr.execute(Command::UpdateElement {
                                     old: old_elem.clone(),
                                     new: Element::Line(l.clone()),

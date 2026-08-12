@@ -275,7 +275,7 @@ pub fn render_workspace_canvas(app: &mut FepdfLayoutApp, ctx: &egui::Context) {
                                         y1: Mm::new(start_y),
                                         x2: Mm::new(mouse_x),
                                         y2: Mm::new(mouse_y),
-                                        stroke_width: Mm::new(1),
+                                        stroke_width: fepdf_layout_core::MmF64::new(0.5),
                                         stroke_color: Color::BLACK,
                                         stroke_style: StrokeStyle::Solid,
                                         line_cap: LineCap::Butt,
