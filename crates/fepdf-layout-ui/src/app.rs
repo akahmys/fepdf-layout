@@ -621,7 +621,7 @@ impl eframe::App for FepdfLayoutApp {
                 }
             }
 
-            // 4. Live Rubber-Band Line Creation Preview & Hover Coordinates
+            // 4. Live Rubber-Band Line Creation Preview & Single Hover Coordinates
             match self.tool_state {
                 ToolState::LineWaitStart => {
                     if let Some(pointer_pos) = ctx.pointer_interact_pos() {
@@ -641,7 +641,6 @@ impl eframe::App for FepdfLayoutApp {
                             painter.circle_filled(p1, 5.0, egui::Color32::RED);
                             painter.circle_filled(p2, 5.0, egui::Color32::RED);
 
-                            // Draw active coordinate hover badges during creation
                             draw_coord_badge(&painter, p1, &format!("始点: {}, {}", start_x, start_y));
                             draw_coord_badge(&painter, p2, &format!("終点: {}, {}", curr_x, curr_y));
                         }
@@ -650,13 +649,15 @@ impl eframe::App for FepdfLayoutApp {
                 ToolState::Select => {}
             }
 
-            // 5. Mouse Press & Drag Handling with Always-On Live Hover Coordinates
+            // 5. Mouse Press & Drag Handling with Single Hover Coordinate Display
             if let Some(pointer_pos) = ctx.pointer_interact_pos() {
                 if page_rect.contains(pointer_pos) {
                     let (mouse_x, mouse_y) = screen_to_mm(pointer_pos);
 
-                    // Always-on live coordinate hover badge near cursor inside page area
-                    draw_coord_badge(&painter, pointer_pos, &format!("{}, {}", mouse_x, mouse_y));
+                    // Show mouse hover coordinate only when NOT in line creation mode to prevent duplication
+                    if self.tool_state == ToolState::Select && self.active_line_handle.is_none() {
+                        draw_coord_badge(&painter, pointer_pos, &format!("{}, {}", mouse_x, mouse_y));
+                    }
 
                     // MOUSE PRESS DOWN EVENT
                     if ctx.input(|i| i.pointer.primary_pressed()) {
