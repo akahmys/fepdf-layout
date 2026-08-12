@@ -9,6 +9,7 @@ pub fn render_parts_palette(app: &mut FepdfLayoutApp, ctx: &egui::Context) {
         .default_width(180.0)
         .width_range(120.0..=400.0)
         .show(ctx, |ui| {
+            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
             ui.set_max_width(ui.available_width());
             let is_line_active = matches!(app.tool_state, ToolState::LineWaitStart | ToolState::LineWaitEnd { .. });
             if ui.selectable_label(is_line_active, "直線").clicked() {

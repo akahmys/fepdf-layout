@@ -10,7 +10,9 @@ pub fn render_property_inspector(app: &mut FepdfLayoutApp, ctx: &egui::Context) 
         .default_width(260.0)
         .width_range(160.0..=500.0)
         .show(ctx, |ui| {
+            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
             ui.set_max_width(ui.available_width());
+
             if app.selected_ids.is_empty() {
                 ui.label("パーツ未選択");
             } else if app.selected_ids.len() == 1 {
@@ -30,7 +32,7 @@ pub fn render_property_inspector(app: &mut FepdfLayoutApp, ctx: &egui::Context) 
                             let old_elem = Element::Line(l.clone());
 
                             let mut stroke_w = l.stroke_width.0;
-                            if ui.horizontal(|ui| {
+                            if ui.horizontal_wrapped(|ui| {
                                 ui.label("線の太さ:");
                                 ui.add(egui::DragValue::new(&mut stroke_w).range(1..=20).suffix(" mm")).changed()
                             }).inner {
@@ -41,12 +43,12 @@ pub fn render_property_inspector(app: &mut FepdfLayoutApp, ctx: &egui::Context) 
                                 });
                             }
 
-                            ui.horizontal(|ui| {
+                            ui.horizontal_wrapped(|ui| {
                                 ui.label("端点形状:");
                                 let mut cap_changed = false;
-                                if ui.selectable_value(&mut l.line_cap, LineCap::Butt, "平頭 (Butt)").clicked() { cap_changed = true; }
-                                if ui.selectable_value(&mut l.line_cap, LineCap::Round, "丸頭 (Round)").clicked() { cap_changed = true; }
-                                if ui.selectable_value(&mut l.line_cap, LineCap::Square, "角頭 (Square)").clicked() { cap_changed = true; }
+                                if ui.selectable_value(&mut l.line_cap, LineCap::Butt, "平頭").clicked() { cap_changed = true; }
+                                if ui.selectable_value(&mut l.line_cap, LineCap::Round, "丸頭").clicked() { cap_changed = true; }
+                                if ui.selectable_value(&mut l.line_cap, LineCap::Square, "角頭").clicked() { cap_changed = true; }
                                 if cap_changed {
                                     app.mgr.execute(Command::UpdateElement {
                                         old: old_elem.clone(),
@@ -64,20 +66,20 @@ pub fn render_property_inspector(app: &mut FepdfLayoutApp, ctx: &egui::Context) 
                                     new: Element::TextBox(tb.clone()),
                                 });
                             }
-                            ui.horizontal(|ui| {
+                            ui.horizontal_wrapped(|ui| {
                                 ui.label("文字揃え:");
                                 ui.selectable_value(&mut tb.align, TextAlign::Left, "左");
                                 ui.selectable_value(&mut tb.align, TextAlign::Center, "中央");
                                 ui.selectable_value(&mut tb.align, TextAlign::Right, "右");
-                                ui.selectable_value(&mut tb.align, TextAlign::Justify, "均等割付");
+                                ui.selectable_value(&mut tb.align, TextAlign::Justify, "均等");
                             });
                             ui.add(egui::Slider::new(&mut tb.horizontal_scaling, 50..=150).text("長体・平体%"));
-                            ui.checkbox(&mut tb.auto_fit_horizontal, "自動枠合わせ (Auto-Fit)");
+                            ui.checkbox(&mut tb.auto_fit_horizontal, "自動枠合わせ");
                         }
                         Element::FormField(mut ff) => {
                             ui.label("■ フォーム属性");
                             ui.label(format!("種別: {:?}", ff.kind));
-                            ui.horizontal(|ui| {
+                            ui.horizontal_wrapped(|ui| {
                                 ui.label("集計タグ:");
                                 let old_elem = app.mgr.doc.get_element(id).unwrap().clone();
                                 if ui.text_edit_singleline(&mut ff.field_tag).changed() {
@@ -94,7 +96,7 @@ pub fn render_property_inspector(app: &mut FepdfLayoutApp, ctx: &egui::Context) 
                 ui.label(format!("選択中パーツ: {} 個", app.selected_ids.len()));
                 ui.separator();
                 ui.label("■ 整列操作 (1mm Grid Snap)");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     if ui.button("⬅ 左揃え").clicked() {
                         app.align_selected(fepdf_layout_core::AlignMode::Left);
                     }
@@ -105,7 +107,7 @@ pub fn render_property_inspector(app: &mut FepdfLayoutApp, ctx: &egui::Context) 
                         app.align_selected(fepdf_layout_core::AlignMode::Right);
                     }
                 });
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     if ui.button("⬇ 下揃え").clicked() {
                         app.align_selected(fepdf_layout_core::AlignMode::Bottom);
                     }
