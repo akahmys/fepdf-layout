@@ -70,10 +70,112 @@ impl PdfExporter {
         summary
     }
 
-    /// Export layout document to a PDF file on disk.
+    /// Generate valid PDF 2.0 binary document bytes from the Document model.
+    pub fn generate_pdf_bytes(doc: &Document) -> Vec<u8> {
+        let paper_w_pt = doc.page_spec.paper_width.to_pt();
+        let paper_h_pt = doc.page_spec.paper_height.to_pt();
+
+        let mut stream_content = String::new();
+
+        for elem in &doc.elements {
+            match elem {
+                Element::Line(l) => {
+                    let (x1_pt, y1_pt) = Self::layout_to_pdf_pt(doc, l.x1.0, l.y1.0);
+                    let (x2_pt, y2_pt) = Self::layout_to_pdf_pt(doc, l.x2.0, l.y2.0);
+                    let stroke_w_pt = l.stroke_width.to_pt();
+                    let cap_code = match l.line_cap {
+                        crate::element::LineCap::Butt => 0,
+                        crate::element::LineCap::Round => 1,
+                        crate::element::LineCap::Square => 2,
+                    };
+                    let r = l.stroke_color.r as f64 / 255.0;
+                    let g = l.stroke_color.g as f64 / 255.0;
+                    let b = l.stroke_color.b as f64 / 255.0;
+
+                    stream_content.push_str(&format!(
+                        "{:.2} w {} J {:.3} {:.3} {:.3} RG {:.2} {:.2} m {:.2} {:.2} l S\n",
+                        stroke_w_pt, cap_code, r, g, b, x1_pt, y1_pt, x2_pt, y2_pt
+                    ));
+                }
+                Element::TextBox(t) => {
+                    let (px, py) = Self::layout_to_pdf_pt(doc, t.x.0, t.y.0);
+                    let r = t.text_color.r as f64 / 255.0;
+                    let g = t.text_color.g as f64 / 255.0;
+                    let b = t.text_color.b as f64 / 255.0;
+                    let clean_text = t.text.replace('(', "\\(").replace(')', "\\)");
+
+                    stream_content.push_str(&format!(
+                        "BT /F1 {:.1} Tf {:.3} {:.3} {:.3} rg {:.2} {:.2} Td ({}) Tj ET\n",
+                        t.font_size_pt, r, g, b, px, py + t.font_size_pt * 0.8, clean_text
+                    ));
+                }
+                Element::FormField(f) => {
+                    let (px, py) = Self::layout_to_pdf_pt(doc, f.x.0, f.y.0);
+                    let (w_pt, h_pt) = (f.width.to_pt(), f.height.to_pt());
+                    stream_content.push_str(&format!(
+                        "0.7 0.7 0.7 RG 1.0 w {:.2} {:.2} {:.2} {:.2} re S\n",
+                        px, py, w_pt, h_pt
+                    ));
+                }
+            }
+        }
+
+        let stream_bytes = stream_content.as_bytes();
+        let stream_len = stream_bytes.len();
+
+        let mut pdf = Vec::new();
+        pdf.extend_from_slice(b"%PDF-2.0\n%\xC2\xE5\xC2\xF2\n");
+
+        let mut offsets = Vec::new();
+
+        // Obj 1: Catalog
+        offsets.push(pdf.len());
+        pdf.extend_from_slice(b"1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+
+        // Obj 2: Pages
+        offsets.push(pdf.len());
+        pdf.extend_from_slice(b"2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n");
+
+        // Obj 3: Page
+        offsets.push(pdf.len());
+        let page_obj = format!(
+            "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {:.2} {:.2}] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n",
+            paper_w_pt, paper_h_pt
+        );
+        pdf.extend_from_slice(page_obj.as_bytes());
+
+        // Obj 4: Stream
+        offsets.push(pdf.len());
+        let stream_header = format!("4 0 obj\n<< /Length {} >>\nstream\n", stream_len);
+        pdf.extend_from_slice(stream_header.as_bytes());
+        pdf.extend_from_slice(stream_bytes);
+        pdf.extend_from_slice(b"\nendstream\nendobj\n");
+
+        // Obj 5: Font
+        offsets.push(pdf.len());
+        pdf.extend_from_slice(b"5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n");
+
+        // XRef Table
+        let xref_offset = pdf.len();
+        pdf.extend_from_slice(b"xref\n0 6\n0000000000 65535 f \n");
+        for &off in &offsets {
+            pdf.extend_from_slice(format!("{:010} 00000 n \n", off).as_bytes());
+        }
+
+        // Trailer
+        let trailer = format!(
+            "trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n{}\n%%EOF\n",
+            xref_offset
+        );
+        pdf.extend_from_slice(trailer.as_bytes());
+
+        pdf
+    }
+
+    /// Export layout document to a valid PDF 2.0 file on disk.
     pub fn export_to_file(doc: &Document, path: impl AsRef<std::path::Path>) -> Result<(), String> {
-        let summary = Self::export_summary(doc);
-        std::fs::write(path, summary).map_err(|e| e.to_string())
+        let pdf_bytes = Self::generate_pdf_bytes(doc);
+        std::fs::write(path, pdf_bytes).map_err(|e| e.to_string())
     }
 }
 
@@ -88,5 +190,13 @@ mod tests {
         let (x, y) = PdfExporter::layout_to_pdf_pt(&doc, 10, 20);
         assert!((x - 28.3464567).abs() < 1e-4);
         assert!((y - 56.6929133).abs() < 1e-4);
+    }
+
+    #[test]
+    fn test_pdf_binary_generation_header() {
+        let doc = Document::new(PagePreset::A4);
+        let bytes = PdfExporter::generate_pdf_bytes(&doc);
+        assert!(bytes.starts_with(b"%PDF-2.0\n"));
+        assert!(bytes.ends_with(b"%%EOF\n"));
     }
 }
