@@ -7,9 +7,6 @@ use crate::app::FepdfLayoutApp;
 pub fn render_top_toolbar(app: &mut FepdfLayoutApp, ctx: &egui::Context) {
     egui::TopBottomPanel::top("header_toolbar").show(ctx, |ui| {
         ui.horizontal(|ui| {
-            ui.heading("fepdf-layout (帳票エディタ)");
-            ui.separator();
-
             if ui.button("📂 開く").clicked() {
                 if let Some(path) = rfd::FileDialog::new()
                     .add_filter("fepdf layout project", &["fepdf-layout", "json"])
