@@ -1553,6 +1553,7 @@ dependencies = [
 name = "fepdf-layout-core"
 version = "0.1.0"
 dependencies = [
+ "bytes",
  "fepdf-core",
  "fepdf-sdk",
  "serde",

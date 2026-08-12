@@ -3,6 +3,7 @@
 use crate::document::Document;
 use crate::element::Element;
 use crate::units::POINTS_PER_INCH;
+use fepdf_sdk as fepdf;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -172,9 +173,17 @@ impl PdfExporter {
         pdf
     }
 
-    /// Export layout document to a valid PDF 2.0 file on disk.
+    /// Export layout document to a valid PDF 2.0 file on disk,
+    /// verified through the `fepdf` core engine facade.
     pub fn export_to_file(doc: &Document, path: impl AsRef<std::path::Path>) -> Result<(), String> {
         let pdf_bytes = Self::generate_pdf_bytes(doc);
+
+        // Verify generated PDF bytes using fepdf core engine facade
+        let _pdf_doc = fepdf::Document::open(
+            bytes::Bytes::from(pdf_bytes.clone()),
+            &fepdf_core::ingest::IngestionOptions::default(),
+        ).map_err(|e| format!("fepdf engine validation failed: {:?}", e))?;
+
         std::fs::write(path, pdf_bytes).map_err(|e| e.to_string())
     }
 }
