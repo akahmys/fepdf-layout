@@ -9,7 +9,9 @@ pub fn render_parts_palette(app: &mut FepdfLayoutApp, ctx: &egui::Context) {
         .resizable(true)
         .default_width(180.0)
         .width_range(120.0..=400.0)
+        .frame(egui::Frame::side_top_panel(&ctx.style()).inner_margin(egui::Margin::symmetric(10.0, 10.0)))
         .show(ctx, |ui| {
+            ui.spacing_mut().item_spacing.y = 8.0;
             ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
             ui.set_max_width(ui.available_width());
 

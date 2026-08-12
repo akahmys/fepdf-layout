@@ -6,8 +6,11 @@ use crate::app::FepdfLayoutApp;
 use crate::icons::{lucide_button, LucideIcon};
 
 pub fn render_top_toolbar(app: &mut FepdfLayoutApp, ctx: &egui::Context) {
-    egui::TopBottomPanel::top("header_toolbar").show(ctx, |ui| {
-        ui.horizontal(|ui| {
+    egui::TopBottomPanel::top("header_toolbar")
+        .frame(egui::Frame::side_top_panel(&ctx.style()).inner_margin(egui::Margin::symmetric(10.0, 6.0)))
+        .show(ctx, |ui| {
+            ui.spacing_mut().item_spacing = egui::vec2(8.0, 4.0);
+            ui.horizontal(|ui| {
             if lucide_button(ui, LucideIcon::FolderOpen, "開く").clicked() {
                 if let Some(path) = rfd::FileDialog::new()
                     .add_filter("fepdf layout project", &["fepdf-layout", "json"])

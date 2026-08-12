@@ -198,7 +198,9 @@ impl eframe::App for FepdfLayoutApp {
         render_top_toolbar(self, ctx);
 
         // --- 2. Bottom Status Bar ---
-        egui::TopBottomPanel::bottom("status_bar").show(ctx, |ui| {
+        egui::TopBottomPanel::bottom("status_bar")
+            .frame(egui::Frame::side_top_panel(&ctx.style()).inner_margin(egui::Margin::symmetric(10.0, 4.0)))
+            .show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.label(&self.status_msg);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
