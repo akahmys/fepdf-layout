@@ -3,11 +3,12 @@
 use eframe::egui;
 use fepdf_layout_core::{Command, Document, PagePreset, PdfExporter};
 use crate::app::FepdfLayoutApp;
+use crate::icons::{lucide_button, LucideIcon};
 
 pub fn render_top_toolbar(app: &mut FepdfLayoutApp, ctx: &egui::Context) {
     egui::TopBottomPanel::top("header_toolbar").show(ctx, |ui| {
         ui.horizontal(|ui| {
-            if ui.button("📂 開く").clicked() {
+            if lucide_button(ui, LucideIcon::FolderOpen, "開く").clicked() {
                 if let Some(path) = rfd::FileDialog::new()
                     .add_filter("fepdf layout project", &["fepdf-layout", "json"])
                     .pick_file()
@@ -26,7 +27,7 @@ pub fn render_top_toolbar(app: &mut FepdfLayoutApp, ctx: &egui::Context) {
                 }
             }
 
-            if ui.button("💾 保存").clicked() {
+            if lucide_button(ui, LucideIcon::Save, "保存").clicked() {
                 if let Some(path) = rfd::FileDialog::new()
                     .add_filter("fepdf layout project", &["fepdf-layout", "json"])
                     .set_file_name("layout_project.fepdf-layout")
@@ -43,7 +44,7 @@ pub fn render_top_toolbar(app: &mut FepdfLayoutApp, ctx: &egui::Context) {
                 }
             }
 
-            if ui.button("📄 PDF出力").clicked() {
+            if lucide_button(ui, LucideIcon::FileText, "PDF出力").clicked() {
                 if let Some(path) = rfd::FileDialog::new()
                     .add_filter("PDF Document", &["pdf"])
                     .set_file_name("form_document.pdf")
@@ -62,11 +63,11 @@ pub fn render_top_toolbar(app: &mut FepdfLayoutApp, ctx: &egui::Context) {
 
             ui.separator();
 
-            if ui.button("↩ Undo").clicked() && app.mgr.history.can_undo() {
+            if lucide_button(ui, LucideIcon::Undo, "Undo").clicked() && app.mgr.history.can_undo() {
                 app.mgr.undo();
                 app.status_msg = "Undo 完了".to_string();
             }
-            if ui.button("↪ Redo").clicked() && app.mgr.history.can_redo() {
+            if lucide_button(ui, LucideIcon::Redo, "Redo").clicked() && app.mgr.history.can_redo() {
                 app.mgr.redo();
                 app.status_msg = "Redo 完了".to_string();
             }

@@ -2,6 +2,7 @@
 
 pub mod app;
 pub mod canvas;
+pub mod icons;
 pub mod inspector;
 pub mod palette;
 pub mod toolbar;
